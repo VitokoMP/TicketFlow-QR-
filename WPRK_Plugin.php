@@ -1,11 +1,11 @@
 <?php
 /**
- * Plugin Name: Cotizador PDF
+ * Plugin Name: TicketFlow QR
  * Author: AlekhArt.codes
  * Author URI: https://github.com/VitokoMp
- * Version: 1.2.2
- * Description: WordPress React pdf cotizacion.
- * Text-Domain: wp-react-pdf-cotizacion 
+ * Version: 1.0.0
+ * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
+ * Text-Domain: ticketflow-qr
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit; // No direct access allowed.
@@ -47,7 +47,6 @@ class WPRK_Plugin {
             <div id="wprk-admin-app" style="padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);"></div>
         </div>';
     }
-    
 
     public function enqueue_scripts($hook) {
         if ($hook !== 'toplevel_page_wprk-settings') {
@@ -56,344 +55,231 @@ class WPRK_Plugin {
 
         wp_enqueue_script(
             'my-react-app',
-            WPRK_URL . 'dist/bundle.js', // Ruta al archivo bundle.js
-            ['wp-element'], // Dependencias de WordPress, incluyendo wp-element para React
+            WPRK_URL . 'dist/bundle.js',
+            ['wp-element'],
             null,
-            true // Cargar en el pie del documento
+            true
         );
 
         wp_localize_script('my-react-app', 'appLocalizer', [
-            'apiUrl' => esc_url(rest_url('wprk/v1')), // URL para tu API REST
-            'nonce' => wp_create_nonce('wp_rest'), // Nonce para autenticación en la API
+            'apiUrl' => esc_url(rest_url('wprk/v1')),
+            'nonce' => wp_create_nonce('wp_rest'),
         ]);
     }
 
-    public function create_rest_routes() {
-        // Ruta para añadir cotización
-        register_rest_route('wprk/v1', '/add-quote', [
-            'methods' => 'POST',
-            'callback' => [$this, 'add_quote'],
-            'permission_callback' => [$this, 'add_quote_permission']
-        ]);
-
-        // Ruta para obtener cotizaciones
-        register_rest_route('wprk/v1', '/get-quotes', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_quotes'],
-            'permission_callback' => '__return_true'
-        ]);
-        //Ruta para actualizar el estado 
-        register_rest_route('wprk/v1', '/update-quote-state', [
-            'methods' => 'POST',
-            'callback' => [$this, 'update_quote_state'],
-            'permission_callback' => [$this, 'update_quote_state_permission']
-        ]);
-
-        // Ruta para actualizar una cotización
-
-    register_rest_route('wprk/v1', '/update-quote/(?P<id>\d+)', [
-        'methods' => 'POST',
-        'callback' => [$this, 'update_quote'],
-        'permission_callback' => [$this, 'update_quote_permission'],
-    ]);
-    
-
-        // Ruta para obtener una cotización por ID
-    register_rest_route('wprk/v1', '/get-quote/(?P<id>\d+)', [
-        'methods' => 'GET',
-        'callback' => [$this, 'get_quote_by_id'],
-        'permission_callback' => '__return_true',
-    ]);
-
-    register_rest_route('wprk/v1', '/drop-quote/(?P<id>\d+)', array(
-            'methods' => 'DELETE',
-            'callback' => [$this, 'drop_quote'],
-            'permission_callback' => [$this, 'drop_quote_permission'],
-    ));
-    
-    
-    }
-
-    public function add_quote($req) { 
-        // Sanitizar los datos de la solicitud
-        $nro_orden = sanitize_text_field($req['nro_orden']);
-        $nro_de_factura = sanitize_text_field($req['nro_de_factura']);
-        $fecha = sanitize_text_field($req['fecha']);
-        $cliente = sanitize_text_field($req['cliente']);
-        $estado = sanitize_text_field($req['estado']);
-        $items = $req['items']; // Los ítems no necesitan campos de total general
-        $nota = sanitize_textarea_field($req['nota']);
-        
-        // Convertir los ítems a JSON
-        $items_json = json_encode($items);
-    
-        // Insertar el post
-        $quote_id = wp_insert_post([
-            'post_title'   => $cliente,
-            'post_type'    => 'quote',
-            'post_status'  => 'publish',
-            'meta_input'   => [
-                '_nro_orden' => $nro_orden,
-                '_nro_de_factura' => $nro_de_factura,
-                '_fecha' => $fecha,
-                '_estado' => $estado,
-                '_items' => $items_json,  // Guardar como JSON
-                '_nota' => $nota,
-                '_total_sin_iva' => sanitize_text_field($req['total_sin_iva']),
-                '_total_iva' => sanitize_text_field($req['total_iva']),
-                '_total_con_iva' => sanitize_text_field($req['total_con_iva']),
-            ],
-        ]);
-    
-        // Manejar errores al insertar el post
-        if (is_wp_error($quote_id)) {
-            return rest_ensure_response([
-                'status'  => 'error',
-                'message' => 'No se pudo crear la cotización.',
-            ]);
-        }
-    
-        // Crear el número de cotización y actualizar el post meta
-        $nro_de_cotizacion = 'COT-' . str_pad($quote_id, 6, '0', STR_PAD_LEFT);
-        update_post_meta($quote_id, '_nro_de_cotizacion', $nro_de_cotizacion);
-    
-        // Obtener los metadatos del post
-        $meta = get_post_meta($quote_id);
-    
-        // Preparar la respuesta
-        $response = [
-            'status' => 'success',
-            'quote_id' => $quote_id,
-            'nro_orden' => $meta['_nro_orden'][0] ?? '',
-            'nro_de_cotizacion' => $nro_de_cotizacion,
-            'nro_de_factura' => $meta['_nro_de_factura'][0] ?? '',
-            'fecha' => $meta['_fecha'][0] ?? '',
-            'cliente' => $cliente,
-            'estado' => $meta['_estado'][0] ?? '',
-            'items' => json_decode($meta['_items'][0] ?? '[]', true),  // Decodificar como JSON
-            'nota' => $meta['_nota'][0] ?? '',
-            'total_sin_iva' => $meta['_total_sin_iva'][0] ?? '',
-            'total_iva' => $meta['_total_iva'][0] ?? '',
-            'total_con_iva' => $meta['_total_con_iva'][0] ?? '',
-        ];
-    
-        return rest_ensure_response($response);
-    }
-    
-    public function get_quotes() {
-        $args = [
-            'post_type'   => 'quote',
-            'post_status' => 'publish',
-            'numberposts' => -1
-        ];
-    
-        $quotes = get_posts($args);
-        $response = [];
-    
-        foreach ($quotes as $quote) {
-            $meta = get_post_meta($quote->ID);
-            $items_json = $meta['_items'][0] ?? '';
-    
-            // Decodificar JSON
-            $items = $items_json ? json_decode($items_json, true) : [];
-    
-            $response[] = [
-                'id' => $quote->ID,
-                'title' => $quote->post_title,
-                'nro_orden' => $meta['_nro_orden'][0] ?? '',
-                'nro_de_cotizacion' => $meta['_nro_de_cotizacion'][0] ?? '',
-                'nro_de_factura' => $meta['_nro_de_factura'][0] ?? '',
-                'fecha' => $meta['_fecha'][0] ?? '',
-                'estado' => $meta['_estado'][0] ?? '',
-                'items' => $items,
-                'nota' => $meta['_nota'][0] ?? '',
-                'total_sin_iva' => $meta['_total_sin_iva'][0] ?? '',
-                'total_iva' => $meta['_total_iva'][0] ?? '',
-                'total_con_iva' => $meta['_total_con_iva'][0] ?? '',
-            ];
-        }
-    
-        error_log(print_r($response, true)); // Para depuración
-    
-        return rest_ensure_response($response);
-    }
-    
-    public function drop_quote($req) {
-        
-        if (empty($req['id']) || !is_numeric($req['id'])) {
-            return new WP_Error('invalid_id', 'El ID de la cotización no es válido', array('status' => 400));
-        }
-    
-        $id = intval($req['id']);
-    
-        // Verifica que el post existe y que es del tipo 'quote'
-        $post = get_post($id);
-        if (!$post || $post->post_type !== 'quote') {
-            return new WP_Error('not_found', 'La cotización no se encontró', array('status' => 404));
-        }
-    
-        // Verifica que el usuario tiene permisos para eliminar la cotización
-        if (!current_user_can('delete_post', $id)) {
-            return new WP_Error('permission_denied', 'No tienes permiso para eliminar esta cotización', array('status' => 403));
-        }
-    
-        // Elimina los metadatos asociados al post
-        $meta_keys = [
-            '_nro_orden',
-            '_nro_de_factura',
-            '_fecha',
-            '_estado',
-            '_items',
-            '_nota',
-            '_total_sin_iva',
-            '_total_iva',
-            '_total_con_iva',
-        ];
-    
-        foreach ($meta_keys as $key) {
-            delete_post_meta($id, $key);
-        }
-    
-        // Elimina el post
-        $deleted = wp_delete_post($id, true);
-    
-        if ($deleted) {
-            return rest_ensure_response(array('message' => 'Cotización eliminada con éxito'));
-        } else {
-            return new WP_Error('delete_failed', 'No se pudo eliminar la cotización', array('status' => 500));
-        }
-    }
-    
-
-    public function update_quote_state($req) {
-        $id = intval($req['id']);
-        $estado = sanitize_text_field($req['estado']);
-    
-        if (!$id || !$estado) {
-            return rest_ensure_response([
-                'status' => 'error',
-                'message' => 'ID de cotización o estado inválido.',
-            ]);
-        }
-    
-        // Actualizar el meta campo de estado
-        update_post_meta($id, '_estado', $estado);
-    
-        return rest_ensure_response([
-            'status' => 'success',
-            'message' => 'Estado actualizado correctamente.',
-        ]);
-    }
-    
-    //validacion del nivel de usuario
-    public function update_quote_state_permission() {
-        return current_user_can('publish_posts');
-    }
-
-    public function update_quote($req) {
-        $id = intval($req['id']);
-        $nro_orden = sanitize_text_field($req['nro_orden']);
-        $nro_de_factura = sanitize_text_field($req['nro_de_factura']);
-        $fecha = sanitize_text_field($req['fecha']);
-        $cliente = sanitize_text_field($req['cliente']);
-        $estado = sanitize_text_field($req['estado']);
-        $items = json_encode($req['items']);
-        $nota = sanitize_textarea_field($req['nota']);
-        
-        // Nuevos campos para total
-        $total_sin_iva = sanitize_text_field($req['total_sin_iva']);
-        $total_iva = sanitize_text_field($req['total_iva']);
-        $total_con_iva = sanitize_text_field($req['total_con_iva']);
-    
-        if (!$id || !$cliente) {
-            return rest_ensure_response([
-                'status' => 'error',
-                'message' => 'ID de cotización o cliente inválido.',
-            ]);
-        }
-    
-        // Actualizar el post y los campos meta
-        $post_data = [
-            'ID' => $id,
-            'post_title' => $cliente,
-        ];
-        wp_update_post($post_data);
-    
-        update_post_meta($id, '_nro_orden', $nro_orden);
-        update_post_meta($id, '_nro_de_factura', $nro_de_factura);
-        update_post_meta($id, '_fecha', $fecha);
-        update_post_meta($id, '_estado', $estado);
-        update_post_meta($id, '_items', $items);
-        update_post_meta($id, '_nota', $nota);
-    
-        // Nuevos campos para total
-        update_post_meta($id, '_total_sin_iva', $total_sin_iva);
-        update_post_meta($id, '_total_iva', $total_iva);
-        update_post_meta($id, '_total_con_iva', $total_con_iva);
-    
-        return rest_ensure_response([
-            'status' => 'success',
-            'message' => 'Cotización actualizada correctamente.',
-        ]);
-    }
-    
-    
-    public function update_quote_permission() {
-        return current_user_can('publish_posts');
-    }
-    
-    public function add_quote_permission() {
-        if (current_user_can('publish_posts')) {
-            return true;
-        } else {
-            error_log('El usuario no tiene permisos para publicar posts.');
-            return false;
-        }
-    }
-    function drop_quote_permission() {
-        return current_user_can('delete_posts');
-    }
-    public function get_quote_by_id($data) {
-        $id = intval($data['id']);
-        
-        // Verificar si el ID es válido
-        if (!$id) {
-            return new WP_Error('invalid_id', 'ID inválido', ['status' => 400]);
-        }
-    
-        // Obtener el post
-        $quote = get_post($id);
-    
-        // Verificar si la cotización existe
-        if (!$quote) {
-            return new WP_Error('no_quote', 'Cotización no encontrada', ['status' => 404]);
-        }
-    
-        // Obtener los metadatos
-        $meta = get_post_meta($id);
-        $items_json = $meta['_items'][0] ?? '';
-    
-        // Decodificar JSON
-        $items = $items_json ? json_decode($items_json, true) : [];
-    
-        // Preparar la respuesta
-        $response = [
-            'id' => $id,
-            'cliente' => $quote->post_title,
-            'nro_orden' => $meta['_nro_orden'][0] ?? '',
-            'nro_de_cotizacion' => $meta['_nro_de_cotizacion'][0] ?? '',
-            'nro_de_factura' => $meta['_nro_de_factura'][0] ?? '',
-            'fecha' => $meta['_fecha'][0] ?? '',
-            'estado' => $meta['_estado'][0] ?? '',
-            'items' => $items,
-            'nota' => $meta['_nota'][0] ?? '',
-        ];
-    
-        return rest_ensure_response($response);
-    }
-    
-    
 }
 
-// Instanciar la clase
-new WPRK_Plugin();
+add_action('admin_enqueue_scripts', function () {
+    wp_enqueue_script(
+        'lector-qr-react-app',
+        plugin_dir_url(__FILE__) . 'build/index.js',
+        ['wp-element'],
+        filemtime(plugin_dir_path(__FILE__) . 'build/index.js'),
+        true
+    );
+});
+
+add_action('admin_menu', function () {
+    add_menu_page('Lector de QR para Tickets', 'Escanear Tickets QR', 'manage_options', 'lector-qr-tickets', function () {
+        echo '<div id="root"></div>';
+    });
+});
+
+add_action('rest_api_init', function () {
+    register_rest_route('lectorqr/v1', '/escanear-ticket', [
+        'methods' => 'POST',
+        'callback' => 'registrar_escaneo_ticket',
+        'permission_callback' => function () {
+            return current_user_can( 'manage_options' );
+        },
+    ]);
+});
+
+function registrar_escaneo_ticket($request) {
+    global $wpdb;
+    $data = $request->get_json_params();
+
+    $ticket_id = isset($data['ticket_id']) ? intval($data['ticket_id']) : 0;
+    $event_id = isset($data['event_id']) ? intval($data['event_id']) : 0;
+    $status = isset($data['status']) ? sanitize_text_field($data['status']) : '';
+    $user_id = get_current_user_id();
+    $scan_time = current_time('mysql');
+
+    if ( !$ticket_id || !$event_id || empty($status) ) {
+        return new WP_REST_Response('Datos incompletos o inválidos.', 400);
+    }
+
+    $wpdb->insert(
+        $wpdb->prefix . 'lector_qr_scans',
+        [
+            'ticket_id' => $ticket_id,
+            'event_id' => $event_id,
+            'user_id' => $user_id,
+            'scan_status' => $status,
+            'scan_time' => $scan_time,
+            'synced' => 0,
+        ]
+    );
+
+    $history_id = wp_insert_post([
+        'post_type' => 'qr_scan_history',
+        'post_status' => 'publish',
+        'post_title' => 'Escaneo QR Ticket ' . $ticket_id,
+        'post_author' => $user_id,
+    ]);
+
+    if (!is_wp_error($history_id)) {
+        update_post_meta($history_id, 'qr_event_id', $event_id);
+        update_post_meta($history_id, 'qr_attendee_id', $user_id);
+        update_post_meta($history_id, 'qr_status', $status);
+        update_post_meta($history_id, 'qr_time', $scan_time);
+    }
+
+    return [
+        'success' => true,
+        'ticket_id' => $ticket_id,
+        'event_id' => $event_id,
+        'status' => $status,
+        'scan_time' => $scan_time
+    ];
+}
+
+register_activation_hook(__FILE__, function () {
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'lector_qr_scans';
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE $table_name (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        ticket_id BIGINT UNSIGNED NOT NULL,
+        event_id BIGINT UNSIGNED NOT NULL,
+        user_id BIGINT UNSIGNED NOT NULL,
+        scan_status VARCHAR(20) NOT NULL,
+        scan_time DATETIME NOT NULL,
+        synced TINYINT(1) DEFAULT 0,
+        PRIMARY KEY (id)
+    ) $charset_collate;";
+
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+});
+
+add_action('init', function () {
+    register_post_type('qr_scan_history', [
+        'label' => 'Historial de Escaneos QR',
+        'public' => false,
+        'show_ui' => true,
+        'show_in_menu' => 'lector-qr-tickets',
+        'supports' => ['title', 'editor', 'custom-fields'],
+    ]);
+});
+
+add_action('rest_api_init', function () {
+    register_rest_route('lectorqr/v1', '/exportar-json', [
+        'methods' => 'GET',
+        'callback' => 'lectorqr_exportar_evento_json',
+        'permission_callback' => '__return_true'
+    ]);
+});
+
+function lectorqr_exportar_evento_json($request) {
+    global $wpdb;
+
+    $codigo_evento = sanitize_text_field($request->get_param('evento'));
+
+    if (empty($codigo_evento)) {
+        return new WP_Error('missing_param', 'Falta el parámetro "evento".', ['status' => 400]);
+    }
+
+    $tabla = $wpdb->prefix . 'lector_qr_scans';
+
+    $resultados = $wpdb->get_results(
+        $wpdb->prepare("SELECT * FROM $tabla WHERE event_code = %s", $codigo_evento),
+        ARRAY_A
+    );
+
+    if (!$resultados) {
+        return new WP_Error('no_data', 'No hay datos para este evento.', ['status' => 404]);
+    }
+
+    $json = json_encode($resultados, JSON_PRETTY_PRINT);
+
+    $upload_dir = wp_upload_dir();
+    $file_path = $upload_dir['basedir'] . "/qr_scans_{$codigo_evento}.json";
+
+    file_put_contents($file_path, $json);
+
+    return [
+        'success' => true,
+        'evento' => $codigo_evento,
+        'mensaje' => 'Archivo JSON creado exitosamente.',
+        'url' => $upload_dir['baseurl'] . "/qr_scans_{$codigo_evento}.json"
+    ];
+}
+
+function actualizar_estado_tickets() {
+    global $wpdb;
+
+    // Obtenemos todos los tickets que no han sido sincronizados (estado 'synced' = 0)
+    $tickets_no_synced = $wpdb->get_results(
+        "SELECT * FROM {$wpdb->prefix}lector_qr_scans WHERE synced = 0"
+    );
+
+    // Verificamos cada ticket y actualizamos el estado
+    foreach ($tickets_no_synced as $ticket) {
+        $ticket_id = $ticket->ticket_id;
+        $event_id = $ticket->event_id;
+
+        // Lógica para actualizar el estado del ticket
+        $estado_actualizado = obtener_estado_actual_ticket($ticket_id, $event_id);
+
+        if ($estado_actualizado) {
+            // Actualizamos la base de datos con el nuevo estado
+            $wpdb->update(
+                $wpdb->prefix . 'lector_qr_scans',
+                [
+                    'scan_status' => $estado_actualizado['status'],  // Ejemplo: check-in, check-out, quemado
+                    'synced' => 1  // Marcamos como sincronizado
+                ],
+                ['ticket_id' => $ticket_id, 'event_id' => $event_id],
+                ['%s', '%d'],
+                ['%d', '%d']
+            );
+        }
+    }
+
+    // También podríamos devolver algo, si necesitas hacer log de lo que se actualizó
+    return true;
+}
+
+// Función para obtener el estado actual del ticket (ejemplo)
+function obtener_estado_actual_ticket($ticket_id, $event_id) {
+    // Aquí es donde tendrías que consultar el estado actual de cada ticket
+    // Esto puede ser una llamada a la API de la base de datos externa o alguna lógica de validación
+    // En este ejemplo se devuelve un estado "quemado" o similar
+    return [
+        'status' => 'quemado'  // Este sería el estado que determinamos (puede ser dinámico)
+    ];
+}
+
+// Programar la tarea para que se ejecute cada 15 segundos
+function programar_actualizacion_tickets() {
+    if (!wp_next_scheduled('actualizar_estado_tickets_evento')) {
+        wp_schedule_event(time(), 'every_15_seconds', 'actualizar_estado_tickets_evento');
+    }
+}
+add_action('wp', 'programar_actualizacion_tickets');
+
+// Definir el intervalo de 15 segundos
+function agregar_intervalo_personalizado($intervals) {
+    $intervals['every_15_seconds'] = array(
+        'interval' => 15,
+        'display'  => __('Cada 15 segundos')
+    );
+    return $intervals;
+}
+add_filter('cron_schedules', 'agregar_intervalo_personalizado');
+
+// Ejecutar la función cuando se dispare el evento
+add_action('actualizar_estado_tickets_evento', 'actualizar_estado_tickets');

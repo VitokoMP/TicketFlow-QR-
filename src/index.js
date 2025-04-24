@@ -4,9 +4,9 @@ import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM fully loaded and parsed     var element = document.getElementById('wprk-admin-app');");
+    console.log("DOM fully loaded and parsed     var element = document.getElementById('tfqr-app');");
 
-    var element = document.getElementById('wprk-admin-app');
+    var element = document.getElementById('tfqr-app');
 
     if (element) {
         const root = createRoot(element);
@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
         );
         console.log("App rendered");
     } else {
-        console.error('Element with ID "wprk-admin-app" not found');
+        console.error('Element with ID "tfqr-app" not found');
         // Puedes también mostrar un mensaje de error en la interfaz de usuario si es necesario
         document.body.innerHTML = '<p>Error: Application container not found.</p>';
 
