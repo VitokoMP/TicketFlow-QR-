@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import './Base.css'; // Importa el archivo de estilos
-import QuoteList from './QuoteList';
+//import QuoteList from './QuoteList';
 //import AddQuote from './components/AddQuote';
+import ScanQR from '../pages/scanQR';
 
 const Base = () => {
 
     return (
         <div>
-                <QuoteList></QuoteList>
+                <ScanQR></ScanQR>
         </div>
     );
 }

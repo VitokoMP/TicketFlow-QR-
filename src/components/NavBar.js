@@ -1,18 +1,16 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import './NavBar.css'; 
+import './NavBar.css';
 
 const NavBar = () => {
   return (
     <>
       <header className="header">
-        <div className="logo">Cotizador PDF</div>
-        <div className="search-bar">
-          <input type="text" placeholder="Explorar cotizaciones..." />
-        </div>
+        <div className="logo">🎟️ TicketFlow</div>
+
         <div className="user-settings">
-          <span>Usuario</span>
-          <span>Configuración</span>
+          <span>👤 Usuario</span>
+          {/* En futuro: <button onClick={logout}>Cerrar sesión</button> */}
         </div>
       </header>
 
@@ -21,14 +19,23 @@ const NavBar = () => {
           to="/" 
           className={({ isActive }) => (isActive ? "nav-link active-link" : "nav-link")}
         >
-          Ver Cotizaciones
+          Ver Tickets
         </NavLink>
+
         <NavLink 
-          to="/AddQuote" 
+          to="/sync" 
           className={({ isActive }) => (isActive ? "nav-link active-link" : "nav-link")}
         >
-          Generar Cotización
+          Sincronizar Ventas
         </NavLink>
+
+        {/* Futuro: escanear QR */}
+        {/* <NavLink 
+          to="/scan" 
+          className={({ isActive }) => (isActive ? "nav-link active-link" : "nav-link")}
+        >
+          Escanear QR
+        </NavLink> */}
       </nav>
     </>
   );

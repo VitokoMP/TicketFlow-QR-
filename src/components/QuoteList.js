@@ -6,7 +6,7 @@ import PDFPreview from './PDFPreview'; // Asegúrate de que la ruta sea correcta
 import './QuoteList.css'; // Asegúrate de que la ruta sea correcta
 import { DropQuote } from './DropQuote';
 
-const QuoteList = () => {
+const QuoteList0 = () => {
     const [quotes, setQuotes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);

@@ -1,5 +1,5 @@
 
-# wp-react-Plugin-PDF
+# wp-react-Scaner-PDF
 
 A React JS WordPress Plugin Starter
 **Diseñado con codigo libre**

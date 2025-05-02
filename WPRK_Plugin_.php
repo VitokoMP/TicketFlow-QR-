@@ -1,0 +1,373 @@
+<?php
+/**
+ * Plugin Name: TicketFlow QR
+ * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
+ * Author: AlekhArt.codes
+ * Version: 1.0.1
+ */
+
+if (!defined('ABSPATH')) exit;
+if ( ! defined( 'JWT_AUTH_SECRET_KEY' ) ) {
+    define( 'JWT_AUTH_SECRET_KEY', 'asereje' );
+}
+/**
+ * Define Plugins Constants
+ */
+define ( 'WPRK_PATH', trailingslashit( plugin_dir_path( __FILE__ ) ) );
+define ( 'WPRK_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
+
+register_activation_hook(__FILE__, function() {
+    // Crear roles personalizados
+    add_role('ticketflow_productor', 'Productor de Eventos', [
+        'read' => true,
+        'exportar_qr' => true,
+        'cerrar_evento' => true
+    ]);
+
+    add_role('ticketflow_escaner', 'Escaneador QR', [
+        'read' => true,
+        'escanear_qr' => true
+    ]);
+
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'ticketflow_scans';
+    $charset_collate = $wpdb->get_charset_collate();
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    $sql = "CREATE TABLE $table_name (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        ticket_id BIGINT(20) UNSIGNED NOT NULL,
+        event_id BIGINT(20) UNSIGNED NOT NULL,
+        qr_code VARCHAR(255),
+        user_id BIGINT(20) UNSIGNED,
+        scan_status VARCHAR(50),
+        scan_time DATETIME,
+        synced TINYINT(1) DEFAULT 0,
+        PRIMARY KEY (id)
+    ) $charset_collate;";
+
+    dbDelta($sql);
+});
+
+/**
+ * Clase para crear la página de administración del plugin, encolar los scripts necesarios y definir los puntos finales de la API REST.
+ */
+
+class TicketFlowQR {
+
+    public function __construct() {
+        // Hooks y acciones
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_scripts']);
+        add_action('init', [$this, 'schedule_ticket_update']);
+        add_action('ticketflow_update_scans', [$this, 'update_scans']);
+        add_action('save_post_event', [$this, 'ticketflow_trigger_on_event_publish'], 10, 3);
+        add_action('init', [$this, 'insert_events_to_db']); // Esto insertará los eventos cuando se inicialice el plugin
+        add_action('rest_api_init', [$this, 'create_rest_routes']);
+        add_action('admin_menu', [$this,'add_admin_menu']);
+    } 
+
+
+    public function ticketflow_page_template() {
+        echo '<div class="wrap">
+            <!-- Contenedor para la aplicación React sin el título -->
+            <div id="wprk-admin-app" style="padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);"></div>
+        </div>';
+    }
+    
+    public function enqueue_scripts($hook) {
+        if ($hook !== 'toplevel_page_wprk-settings') {
+            return;
+        }
+
+        wp_enqueue_script(
+            'my-react-app',
+            WPRK_URL . 'dist/bundle.js', // Ruta al archivo bundle.js
+            ['wp-element'], // Dependencias de WordPress, incluyendo wp-element para React
+            null,
+            true // Cargar en el pie del documento
+        );
+
+        wp_localize_script('my-react-app', 'appLocalizer', [
+            'apiUrl' => esc_url(rest_url('wprk/v1')), // URL para tu API REST
+            'nonce' => wp_create_nonce('wp_rest'), // Nonce para autenticación en la API
+        ]);
+    }
+
+    public function create_rest_routes() {
+
+        register_rest_route('ticketflow/v1', '/exportar', [
+            'methods' => 'GET',
+            'callback' => [$this, 'export_json'],
+            'permission_callback' => function () {
+                return current_user_can('exportar_qr');
+            }
+        ]);
+    
+        register_rest_route('ticketflow/v1', '/importar', [
+            'methods' => 'POST',
+            'callback' => [$this, 'import_json'],
+            'permission_callback' => function () {
+                return current_user_can('exportar_qr');
+            }
+        ]);
+    
+        register_rest_route('ticketflow/v1', '/sincronizar', [
+            'methods' => 'POST',
+            'callback' => [$this, 'sync_data'],
+            'permission_callback' => function () {
+                return current_user_can('escanear_qr') || current_user_can('exportar_qr');
+            }
+        ]);
+
+        register_rest_route('ticketflow/v1', '/tickets-vendidos', [
+                'methods'  => 'GET',
+                'callback' => 'alekhart_get_tickets_vendidos',
+                'permission_callback' => '__return_true', // Cambiar por permisos seguros si es necesario
+        ]);
+        
+    }
+         
+    public function add_admin_menu() {
+        if (current_user_can('manage_options')) {
+            add_menu_page(
+                '.TicketFlow',
+                '.TicketFlow',
+                'manage_options',
+                'wprk-ticketflow',
+                [$this, 'ticketflow_page_template'],
+                'dashicons-tickets-alt',
+                20
+            );
+        }
+    }
+
+
+    // Obtener el evento activo
+    public function get_active_event() {
+        global $wpdb;
+        $cache_key = 'active_event_id';
+        $cached_event_id = wp_cache_get($cache_key); // Intentar obtener el evento activo desde la cache.
+        if ($cached_event_id) {
+            return get_post($cached_event_id); // Si está en caché, retornamos el evento.
+        }
+        $args = [
+            'post_type'      => 'event',
+            'posts_per_page' => 1,
+            'meta_key'       => 'activo',
+            'meta_value'     => '1',
+        ];
+        $query = new WP_Query($args);
+        if ($query->have_posts()) {
+            $event = $query->posts[0];
+            wp_cache_set($cache_key, $event->ID); // Cacheamos el ID del evento activo.
+            return $event;
+        }
+        return null;
+    }
+
+    // Obtener los tickets para el evento
+    public function get_tickets_for_event($event_id) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ticketflow_scans'; // Tabla de tickets
+        return $wpdb->get_results(
+            $wpdb->prepare("SELECT * FROM $table_name WHERE event_id = %d", $event_id)
+        );
+    }
+
+    function alekhart_sync_tickets_vendidos($request) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'ticketflow_scans';
+        $insertados = [];
+
+        $orders = wc_get_orders([
+            'status' => ['completed', 'processing'],
+            'limit'  => -1,
+        ]);
+
+        foreach ($orders as $order) {
+            foreach ($order->get_items() as $item) {
+                $product_id = $item->get_product_id();
+                $user_id    = $order->get_user_id();
+                $event_id   = get_post_meta($product_id, '_event_id', true);
+                $ticket_id  = $item->get_id();
+
+                if (!$event_id) continue;
+
+                // Evitar duplicados
+                $exists = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM $table WHERE ticket_id = %d",
+                    $ticket_id
+                ));
+
+                if ($exists) continue;
+
+                $wpdb->insert($table, [
+                    'ticket_id' => $ticket_id,
+                    'user_id'   => $user_id,
+                    'event_id'  => $event_id,
+                    'status'    => 'pendiente',
+                ]);
+
+                $insertados[] = $ticket_id;
+            }
+        }
+
+        return rest_ensure_response([
+            'success' => true,
+            'insertados' => $insertados,
+        ]);
+    }
+
+    // Manejar el escaneo de un ticket
+    public function handle_qr_scan($request) {
+        global $wpdb;
+        $data = $request->get_json_params();
+        $table = "{$wpdb->prefix}ticketflow_scans";
+
+        $existing = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM $table WHERE ticket_id = %d", $data['ticket_id'])
+        );
+
+        $values = [
+            'ticket_id'   => $data['ticket_id'],
+            'event_id'    => $data['event_id'],
+            'user_id'     => get_current_user_id(),
+            'scan_status' => sanitize_text_field($data['status']),
+            'scan_time'   => current_time('mysql'),
+            'synced'      => 0,
+        ];
+
+        if ($existing) {
+            $wpdb->update($table, $values, ['ticket_id' => $data['ticket_id']]);
+        } else {
+            $wpdb->insert($table, $values);
+        }
+
+        // Actualizar los metadatos del evento
+        $scans = $wpdb->get_results(
+            $wpdb->prepare("SELECT scan_status FROM $table WHERE event_id = %d", $data['event_id'])
+        );
+
+        $scan_count = count($scans);
+        $last_status = end($scans)->scan_status;
+
+        update_post_meta($data['event_id'], '_qr_scan_count', $scan_count);
+        update_post_meta($data['event_id'], '_qr_last_status', $last_status);
+
+        return new WP_REST_Response(['message' => 'Escaneo actualizado y metadatos del evento actualizados'], 200);
+    }
+
+    // Función para obtener eventos activos desde la API REST
+    public function fetch_active_events_from_api() {
+        $url = 'https://localhost/wordpress/wp-json/wp/v2/mep_events';  // La URL de la API para obtener los eventos
+        $response = wp_remote_get($url);
+
+        // Verificar que la respuesta sea válida
+        if (is_wp_error($response)) {
+            return new WP_Error('api_error', 'No se pudo conectar con la API de eventos.', ['status' => 500]);
+        }
+
+        $events = json_decode(wp_remote_retrieve_body($response), true);
+
+        if (empty($events)) {
+            return new WP_Error('no_events', 'No se encontraron eventos activos.', ['status' => 404]);
+        }
+
+        return $events;
+    }
+
+    // Función para insertar eventos activos en la base de datos
+    public function insert_events_to_db() {
+        global $wpdb;
+
+        // Obtener los eventos activos desde la API
+        $events = $this->fetch_active_events_from_api();
+        
+        if (is_wp_error($events)) {
+            return $events;  // Retornamos el error si hubo un problema al obtener los eventos
+        }
+
+        // Insertar cada evento en la tabla correspondiente
+        $table_name = $wpdb->prefix . 'ticketflow_scans';
+
+        foreach ($events as $event) {
+            // Verificar si el evento ya existe (basado en un campo único, como el ID del evento)
+            $existing_event = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM $table_name WHERE event_id = %d", $event['id']
+            ));
+
+            // Si el evento no existe, insertarlo
+            if (!$existing_event) {
+                $wpdb->insert($table_name, [
+                    'event_id'    => $event['id'],
+                    'ticket_id'   => $event['ticket_id'],
+                    'qr_code'     => $event['qr_code'],
+                    'user_id'     => $event['user_id'],
+                    'scan_status' => 'pendiente',  // O el estado que desees
+                    'scan_time'   => null,         // Inicialmente no escaneado
+                    'synced'      => 0,            // Sincronización pendiente
+                ]);
+            }
+        }
+    }
+
+    // Activar la tarea programada
+    public function schedule_ticket_update() {
+        if (!wp_next_scheduled('ticketflow_update_scans')) {
+            wp_schedule_event(time(), 'hourly', 'ticketflow_update_scans');
+        }
+    }
+
+    // Actualizar los escaneos
+
+        public function update_scans() {
+            global $wpdb;
+    
+            $event = $this->get_active_event();
+            if (!$event) {
+                $this->create_default_active_event();
+                $event = $this->get_active_event(); 
+            }
+    
+            if (!$event) return;
+    
+            $tickets = $wpdb->get_results($wpdb->prepare(
+                "SELECT ticket_id, status FROM {$wpdb->prefix}ticketflow_scans WHERE event_id = %d",
+                $event->ID
+            ));
+    
+            foreach ($tickets as $ticket) {
+                if ($ticket->status === 'vendido') {
+                    $wpdb->update(
+                        $wpdb->prefix . 'ticketflow_scans',
+                        ['status' => 'quemado'],
+                        ['ticket_id' => $ticket->ticket_id]
+                    );
+                }
+            }
+        }
+    
+
+    // Crear evento activo por defecto
+    public function create_default_active_event() {
+        $new_event = [
+            'post_title'   => 'Evento Activo por Defecto',
+            'post_content' => 'Este es un evento generado automáticamente porque no había un evento activo.',
+            'post_status'  => 'publish',
+            'post_type'    => 'event',
+        ];
+
+        $event_id = wp_insert_post($new_event);
+        if ($event_id) {
+            update_post_meta($event_id, 'activo', '1');
+        }
+    }
+
+    
+    // Limpiar la tarea programada al desactivar el plugin
+    public function deactivate() {
+        wp_clear_scheduled_hook('ticketflow_update_scans');
+    }
+
+} new TicketFlowQR();
