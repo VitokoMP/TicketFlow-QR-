@@ -2,7 +2,7 @@ import React from 'react';
 import App from './App';
 //importe estos dos administradores nuevos.
 import { EventoProvider } from "./context/EventoContext";
-//import { QRProvider } from "./context/QRContext";
+import { QRProvider } from "./context/QRContext";
 //////////////////////////////
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';

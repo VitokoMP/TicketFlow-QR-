@@ -11,9 +11,9 @@ export function EventoProvider({ children }) {
   const [asistentes, setAsistentes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isEventoDisponible, setIsEventoDisponible] = useState(false); // Nueva variable de estado
 
-  // Puedes ajustar la URL a tu endpoint real en WordPress
-  const API_URL = "/wp-json/mep/v1/evento-activo";
+  const API_URL = "localhost/wordpress/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes-vendidos";
 
   const fetchEvento = async () => {
     setLoading(true);
@@ -23,7 +23,14 @@ export function EventoProvider({ children }) {
 
       const data = await response.json();
       setEvento(data.evento);
-      setAsistentes(data.asistentes); // espera que el endpoint devuelva los asistentes en un array
+      setAsistentes(data.asistentes);
+
+      // Verificar si el evento está disponible
+      if (data.evento && data.evento.estado === 'activo') {
+        setIsEventoDisponible(true);
+      } else {
+        setIsEventoDisponible(false);
+      }
     } catch (err) {
       console.error("Error en fetchEvento:", err);
       setError(err.message);
@@ -33,7 +40,7 @@ export function EventoProvider({ children }) {
   };
 
   useEffect(() => {
-    fetchEvento(); // carga automática al montar
+    //fetchEvento(); // carga automática al montar
   }, []);
 
   return (
@@ -44,6 +51,7 @@ export function EventoProvider({ children }) {
         loading,
         error,
         fetchEvento,
+        isEventoDisponible, // Pasamos la nueva variable
       }}
     >
       {children}
