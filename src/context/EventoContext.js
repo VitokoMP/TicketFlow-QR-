@@ -13,7 +13,7 @@ export function EventoProvider({ children }) {
   const [error, setError] = useState(null);
   const [isEventoDisponible, setIsEventoDisponible] = useState(false); // Nueva variable de estado
 
-  const API_URL = "localhost/wordpress/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes-vendidos";
+  const API_URL = "localhost/wordpress0/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes-vendidos";
 
   const fetchEvento = async () => {
     setLoading(true);
@@ -40,7 +40,7 @@ export function EventoProvider({ children }) {
   };
 
   useEffect(() => {
-    //fetchEvento(); // carga automática al montar
+    fetchEvento(); // carga automática al montar
   }, []);
 
   return (

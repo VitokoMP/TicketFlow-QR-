@@ -17,6 +17,7 @@ if ( ! defined( 'JWT_AUTH_SECRET_KEY' ) ) {
  */
 define ( 'WPRK_PATH', trailingslashit( plugin_dir_path( __FILE__ ) ) );
 define ( 'WPRK_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
+ 
 
 /**
  * Creamos jook.
@@ -77,8 +78,7 @@ class WPRK_Plugin {
     
     public function __construct() {
         // Crear menú y encolar scripts
-        add_action('admin_menu', [$this, 'create_admin_menu']);
-        
+        add_action('admin_menu', [$this, 'create_admin_menu']);        
         add_action('admin_enqueue_scripts', [$this, 'enqueue_scripts']);
         add_action('init', [$this, 'schedule_ticket_update']);
         add_action('ticketflow_update_scans', [$this, 'update_scans']);
@@ -86,6 +86,14 @@ class WPRK_Plugin {
         add_action('init', [$this, 'insert_events_to_db']); // Esto insertará los eventos cuando se inicialice el plugin
         add_action('rest_api_init', [$this, 'create_rest_routes']);
 //        add_action('rest_api_init', 'alekhart_register_sync_tickets_route');
+// Agregar un menú en el panel de administración de WordPress
+        add_action('admin_menu', function() {
+        add_menu_page('Sincronizar Eventos', 'Sincronizar Eventos', 'manage_options', 'sincronizar_eventos', 'ejecutar_sincronizacion_con_boton');
+            //jquery
+            add_action( 'wp_enqueue_scripts', 'load_jquery_ui' );
+            add_action('admin_enqueue_scripts', 'cargar_jquery_ui');
+
+    });
     }
 
     public function create_admin_menu() {
@@ -150,6 +158,11 @@ class WPRK_Plugin {
                 return current_user_can('exportar_qr');
             }
         ]);
+ 
+        register_rest_route('ticketflow/v1', '/events/', [
+            'methods' => 'GET',
+            'callback' => 'get_events_from_db',
+        ]);
     
         register_rest_route('ticketflow/v1', '/sincronizar', [
             'methods' => 'POST',
@@ -172,91 +185,87 @@ class WPRK_Plugin {
         }
     }
 
-     
- // Función para sincronizar eventos y asistentes
-function mep_sincronizar_eventos_y_asistentes() {
-    global $wpdb;
-
-    // Paso 1: Obtener eventos de la API
-    $url = 'http://localhost/wordpress/wp-json/wp/v2/mep_events';
-    $response = wp_remote_get($url);
-    if (is_wp_error($response)) {
-        return new WP_Error('api_error', 'Error al obtener eventos de la API', ['status' => 500]);
-    }
-
-    $eventos = json_decode(wp_remote_retrieve_body($response), true);
-    if (empty($eventos)) {
-        return new WP_Error('no_events', 'No se encontraron eventos', ['status' => 404]);
-    }
-
-    $eventos_insertados = [];
-
-    // Paso 2: Procesar eventos
-    foreach ($eventos as $evento) {
-        if (isset($evento['id'], $evento['title']['rendered'], $evento['event_start_datetime'])) {
-            $event_title = sanitize_text_field($evento['title']['rendered']);
-            $event_start = date('Y-m-d H:i:s', strtotime($evento['event_start_datetime']));
-
-            // Verificar si el evento ya existe por fecha y título
+    function mep_sincronizar_eventos_y_asistentes() {
+        global $wpdb;
+    
+        // 1. Obtener eventos desde tu endpoint REST
+        $response = wp_remote_get(home_url('/wp-json/ticketflow/v1/events/'));
+    
+        if (is_wp_error($response)) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Error al obtener eventos.'], 500);
+        }
+    
+        $body = wp_remote_retrieve_body($response);
+        $events = json_decode($body, true);
+    
+        if (!is_array($events)) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Respuesta inválida del endpoint.'], 500);
+        }
+    
+        $eventos_insertados = [];
+    
+        foreach ($events as $event) {
+            $event_id = $event['id'];
+            $event_title = $event['title'] ?? '';
+            $event_start = $event['start_date'] ?? null;
+            $event_end = $event['end_date'] ?? null;
+            $event_location = $event['location'] ?? '';
+    
+            if (!$event_start || !$event_end) continue;
+    
+            // Verificar duplicados
             $exists = $wpdb->get_var($wpdb->prepare(
                 "SELECT COUNT(*) FROM {$wpdb->prefix}ticketflow_scans 
                  WHERE event_start_date = %s AND event_title = %s",
                 $event_start, $event_title
             ));
-
+    
             if (!$exists) {
                 $wpdb->insert("{$wpdb->prefix}ticketflow_scans", [
-                    'event_id'         => intval($evento['id']),
-                    'event_title'      => $event_title,
+                    'event_id'         => $event_id,
+                    'event_title'      => sanitize_text_field($event_title),
                     'event_start_date' => $event_start,
-                    'event_end_date'   => date('Y-m-d H:i:s', strtotime($evento['event_end_datetime'])),
-                    'event_location'   => sanitize_text_field($evento['mep_location_venue'][0] ?? ''),
+                    'event_end_date'   => $event_end,
+                    'event_location'   => sanitize_text_field($event_location),
                     'synced'           => 0,
                     'qr_code'          => null,
                 ]);
-                $eventos_insertados[] = ['event_id' => intval($evento['id'])];
+    
+                $eventos_insertados[] = ['event_id' => $event_id];
             }
         }
-    }
-
-    // Paso 3: Extraer los event_ids de los eventos insertados
-    $event_ids = extract_event_ids($eventos_insertados);
-
-    // Paso 4: Obtener asistentes para esos eventos
-    if (empty($event_ids)) {
-        return new WP_REST_Response(['message' => 'No se insertaron nuevos eventos.'], 200);
-    }
-
-    $asistentes = get_attendees_for_events($event_ids);
-
-    // Paso 5: Procesar los asistentes
-    foreach ($asistentes as $a) {
-        if (empty($a['ticket_number']) || empty($a['event_id'])) continue;
-
-        // Verificar si el asistente ya está registrado con ticket y evento
-        $exists = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}ticketflow_scans WHERE ticket_id = %d AND event_id = %d",
-            $a['ticket_number'], $a['event_id']
-        ));
-
-        if (!$exists) {
-            $wpdb->insert("{$wpdb->prefix}ticketflow_scans", [
-                'ticket_id'   => intval($a['ticket_number']),
-                'event_id'    => intval($a['event_id']),
-                'user_id'     => null,
-                'qr_code'     => sanitize_text_field($a['qr_code']),
-                'scan_status' => $a['scan_status'] ?? 'pending',
-                'synced'      => 0,
-            ]);
+    
+        // Puedes seguir con la sincronización de asistentes si lo deseas
+        $event_ids = extract_event_ids($eventos_insertados);
+        if (!empty($event_ids)) {
+            $asistentes = get_attendees_for_events($event_ids);
+            foreach ($asistentes as $a) {
+                if (empty($a['ticket_number']) || empty($a['event_id'])) continue;
+    
+                $exists = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}ticketflow_scans WHERE ticket_id = %d AND event_id = %d",
+                    $a['ticket_number'], $a['event_id']
+                ));
+    
+                if (!$exists) {
+                    $wpdb->insert("{$wpdb->prefix}ticketflow_scans", [
+                        'ticket_id'   => intval($a['ticket_number']),
+                        'event_id'    => intval($a['event_id']),
+                        'user_id'     => null,
+                        'qr_code'     => sanitize_text_field($a['qr_code']),
+                        'scan_status' => $a['scan_status'] ?? 'pending',
+                        'synced'      => 0,
+                    ]);
+                }
+            }
         }
+    
+        return new WP_REST_Response([
+            'success' => true,
+            'message' => 'Sincronización completa usando datos del endpoint.',
+        ], 200);
     }
-
-    return new WP_REST_Response([
-        'success' => true,
-        'message' => 'Eventos y asistentes sincronizados correctamente.',
-    ], 200);
-}
-
+    
 // Función para extraer event_ids de los eventos procesados
 private function extract_event_ids($events) {
     return array_map(fn($event) => $event['event_id'], $events);
@@ -529,8 +538,45 @@ function ejecutar_sincronizacion_con_boton() {
           </form>';
 }
 
-// Agregar un menú en el panel de administración de WordPress
-add_action('admin_menu', function() {
-    add_menu_page('Sincronizar Eventos', 'Sincronizar Eventos', 'manage_options', 'sincronizar_eventos', 'ejecutar_sincronizacion_con_boton');
-});
+function load_jquery_ui() {
+    wp_enqueue_script( 'jquery-ui-sortable' );
+}
+function cargar_jquery_ui() {
+    // Asegúrate de cargar jQuery UI en el área de administración
+    wp_enqueue_script('jquery-ui-sortable');  // jQuery UI ya está incluido en WordPress
+}
+
+// Función para obtener eventos desde la base de datos
+function get_events_from_db(WP_REST_Request $request) {
+    global $wpdb;
+
+    // Definir la consulta SQL
+    $query =  "
+    SELECT 
+        p.ID, 
+        p.post_title, 
+        MAX(CASE WHEN pm.meta_key = 'event_start_datetime' THEN pm.meta_value END) AS event_start_datetime,
+        MAX(CASE WHEN pm.meta_key = 'event_end_datetime' THEN pm.meta_value END) AS event_end_datetime
+    FROM {$wpdb->prefix}posts AS p
+    LEFT JOIN {$wpdb->prefix}postmeta AS pm
+        ON p.ID = pm.post_id
+    WHERE p.post_type = 'mep_events'
+    AND pm.meta_key IN ('event_start_datetime', 'event_end_datetime')
+    GROUP BY p.ID
+    ORDER BY event_start_datetime ASC
+";
+
+    // Ejecutar la consulta y obtener los resultados
+    $events = $wpdb->get_results($query);
+
+    if ($events) {
+        // Devolver los eventos en formato JSON
+        return new WP_REST_Response($events, 200);
+    } else {
+        // Si no hay eventos, devolver un mensaje
+        return new WP_REST_Response('No se encontraron eventos.', 404);
+    }
+}
+
+
 new WPRK_Plugin();
