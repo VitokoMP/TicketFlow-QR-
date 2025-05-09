@@ -8,31 +8,40 @@ export function useEvento() {
 
 export function EventoProvider({ children }) {
   const [evento, setEvento] = useState(null);
-  const [asistentes, setAsistentes] = useState([]);
+  const [asistentes, setAsistentes] = useState([]); // aún sin uso
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isEventoDisponible, setIsEventoDisponible] = useState(false); // Nueva variable de estado
+  const [isEventoDisponible, setIsEventoDisponible] = useState(false);
 
-  const API_URL = `${window.location.origin}/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes`;
-
-//  const API_URL = "http://localhost/wordpress/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes";
+  const API_URL = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/events`;
+  // const API_URL = "http://localhost/wordpress/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes";
 
   const fetchEvento = async () => {
     setLoading(true);
     try {
       const response = await fetch(API_URL);
-      if (!response.ok) throw new Error("Error al obtener el evento");
+      if (!response.ok) throw new Error("Error al obtener los eventos");
 
       const data = await response.json();
-      setEvento(data.evento);
-      setAsistentes(data.asistentes);
+      console.log("Eventos obtenidos:", data);
 
-      // Verificar si el evento está disponible
-      if (data.evento && data.evento.estado === 'activo') {
+      // Si es un array, filtramos el evento activo más próximo
+      const eventosActivos = data.filter(e => e.title && e.start_datetime); // O usa tu propia lógica
+      const eventoActivo = eventosActivos[0]; // podrías ordenarlos por fecha si hay más de uno
+
+      if (eventoActivo) {
+        setEvento({
+          nombre: eventoActivo.title,
+          fecha: eventoActivo.start_datetime,
+          lugar: eventoActivo.lugar || "Lugar no especificado",
+          estado: "activo", // si tu API no lo trae, asumimos
+        });
         setIsEventoDisponible(true);
       } else {
+        setEvento(null);
         setIsEventoDisponible(false);
       }
+
     } catch (err) {
       console.error("Error en fetchEvento:", err);
       setError(err.message);
@@ -42,7 +51,7 @@ export function EventoProvider({ children }) {
   };
 
   useEffect(() => {
-    fetchEvento(); // carga automática al montar
+    fetchEvento();
   }, []);
 
   return (
@@ -53,7 +62,7 @@ export function EventoProvider({ children }) {
         loading,
         error,
         fetchEvento,
-        isEventoDisponible, // Pasamos la nueva variable
+        isEventoDisponible,
       }}
     >
       {children}

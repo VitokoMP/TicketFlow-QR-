@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { useEvento } from "../context/EventoContext";
+import EventoInfo from "../components/EventInfo";
 
 export default function ScanQR() {
   const {
@@ -92,6 +93,7 @@ export default function ScanQR() {
     <div className="h-screen w-screen bg-black text-white flex flex-col items-center justify-center">
       <h1 className="text-3xl text-yellow-400 font-bold mb-6">Ticket Flow</h1>
 
+    <EventoInfo />
       {loadingContext ? (
         <button
           onClick={handleStartScanner}

@@ -11,13 +11,13 @@ export default function EventoInfo() {
   return (
     <div className="bg-yellow-100 p-4 rounded-lg shadow text-black w-full max-w-lg">
       <h2 className="text-xl font-bold mb-2">🎫 Evento activo</h2>
-      <p><strong>Nombre:</strong> {evento.nombre}</p>
-      <p><strong>Fecha:</strong> {evento.fecha}</p>
+      <p><strong>Título:</strong> {evento.nombre}</p>
+      <p><strong>Inicio:</strong> {evento.fecha}</p>
       <p><strong>Lugar:</strong> {evento.lugar}</p>
       <p>
         <strong>Estado:</strong>{' '}
         <span className={isEventoDisponible ? 'text-green-600' : 'text-red-600'}>
-          {evento.estado}
+          {isEventoDisponible ? 'Disponible' : 'No disponible'}
         </span>
       </p>
     </div>

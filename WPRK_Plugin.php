@@ -145,7 +145,7 @@ class WPRK_Plugin {
     }
 
     public function create_rest_routes() {
-        register_rest_route('mep/v1', '/mep_sincronizar_eventos_y_asistentes', [
+        register_rest_route('ticketflow/v1', '/mep_sincronizar_eventos_y_asistentes', [
             'methods'  => 'GET',
             'callback' => [$this,'mep_sincronizar_eventos_y_asistentes'],
             'permission_callback' => '__return_true', // Temporalmente para pruebas
@@ -156,7 +156,18 @@ class WPRK_Plugin {
             'callback' => [$this, 'get_events_from_db'],
             'permission_callback' => '__return_true',
         ]);
-    
+
+        register_rest_route('ticketflow/v1', '/asistentes', [
+            'methods' => 'GET',
+            'callback' => 'mep_get_asistentes_by_event_ids',
+            'permission_callback' => '__return_true', // ajusta según seguridad
+        ]);
+        
+        register_rest_route('ticketflow/v1', '/eventos-activos', [
+            'methods' => 'GET',
+            'callback' => 'mep_get_eventos_activos',
+            'permission_callback' => '__return_true',
+        ]);
      }
  
 function mep_sincronizar_eventos_y_asistentes() {
@@ -262,6 +273,34 @@ function mep_sincronizar_eventos_y_asistentes() {
         'message' => 'Sincronización completa.'
     ], 200);
 }
+
+// Función para traer eventos de la base de datos y que sucede!?
+function mep_get_eventos_activos() {
+    global $wpdb;
+    $tabla = $wpdb->prefix . 'ticketflow_scans';
+
+    $query = "
+        SELECT 
+            event_id, 
+            event_title, 
+            event_start_date, 
+            event_end_date 
+        FROM $tabla
+        WHERE tipo = 'evento'
+          AND event_end_date >= NOW()
+        GROUP BY event_id
+        ORDER BY event_start_date ASC
+    ";
+
+    $resultados = $wpdb->get_results($query);
+
+    if (!$resultados) {
+        return new WP_REST_Response(['message' => 'No hay eventos activos.'], 204);
+    }
+
+    return new WP_REST_Response($resultados, 200);
+}
+
         // Función para obtener los asistentes de los eventos
     private function get_attendees_for_events($event_ids) {
         global $wpdb;
@@ -316,6 +355,27 @@ function mep_sincronizar_eventos_y_asistentes() {
         return $wpdb->get_results($prepared, ARRAY_A);
     }
 
+    //funcion para obtener los asistentes por ID de evento
+    function mep_get_asistentes_by_event_ids(WP_REST_Request $request) {
+        $event_ids = $request->get_param('event_ids');
+    
+        if (!is_array($event_ids)) {
+            return new WP_Error('invalid_param', 'Se requiere un array de IDs de evento.', ['status' => 400]);
+        }
+    
+        $asistentes = get_attendees_for_events($event_ids);
+    
+        // Agrupar por evento
+        $agrupado = [];
+        foreach ($asistentes as $asistente) {
+            $id = $asistente['event_id'];
+            if (!isset($agrupado[$id])) $agrupado[$id] = [];
+            $agrupado[$id][] = $asistente;
+        }
+    
+        return rest_ensure_response(['asistentes' => $agrupado]);
+    }
+    
 
     function ejecutar_sincronizacion_con_boton() {
         if (isset($_POST['ejecutar_sincronizacion'])) {
