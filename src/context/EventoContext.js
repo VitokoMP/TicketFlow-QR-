@@ -13,7 +13,9 @@ export function EventoProvider({ children }) {
   const [error, setError] = useState(null);
   const [isEventoDisponible, setIsEventoDisponible] = useState(false); // Nueva variable de estado
 
-  const API_URL = "localhost/wordpress0/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes-vendidos";
+  const API_URL = `${window.location.origin}/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes`;
+
+//  const API_URL = "http://localhost/wordpress/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes";
 
   const fetchEvento = async () => {
     setLoading(true);

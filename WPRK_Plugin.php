@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.0.3
+ * Version: 1.0.4
  * Text-Domain: wp-react-ticketflow-qr 
  */
 
@@ -53,6 +53,7 @@ register_activation_hook(__FILE__, function() {
         event_end_date DATETIME NULL,
         event_title VARCHAR(255) NULL,
         event_location VARCHAR(255) NULL,
+        tipo VARCHAR(255) NULL,
         PRIMARY KEY (id),
         KEY ticket_id (ticket_id),
         KEY event_id (event_id),
@@ -159,7 +160,10 @@ class WPRK_Plugin {
      }
  
 function mep_sincronizar_eventos_y_asistentes() {
+
     global $wpdb;
+    $tipo_evento = 'evento';
+    $tipo_asistente = 'asistente';
 
     $wpdb->query("
     DELETE t1 FROM {$wpdb->prefix}ticketflow_scans t1
@@ -198,20 +202,22 @@ function mep_sincronizar_eventos_y_asistentes() {
         $event_title = $event['title'] ?? '';
         $event_start = $event['start_datetime'] ?? null;
         $event_end = $event['end_datetime'] ?? null;
+
     
         // Verificar que los datos esenciales estén presentes
         if (!$event_start || !$event_end) continue;
     
         // Insertar o actualizar el evento
         $wpdb->query($wpdb->prepare("
-            INSERT INTO {$wpdb->prefix}ticketflow_scans (event_id, event_title, event_start_date, event_end_date, synced, qr_code)
-            VALUES (%d, %s, %s, %s, %d, %s)
+            INSERT INTO {$wpdb->prefix}ticketflow_scans (event_id, event_title, event_start_date, event_end_date, synced, qr_code,tipo)
+            VALUES (%d, %s, %s, %s, %d, %s, %s)
             ON DUPLICATE KEY UPDATE
                 event_title = VALUES(event_title),
                 event_start_date = VALUES(event_start_date),
                 event_end_date = VALUES(event_end_date),
-                synced = VALUES(synced)
-        ", $event_id, sanitize_text_field($event_title), $event_start, $event_end, 0, null));
+                synced = VALUES(synced),
+                tipo = VALUES(tipo)
+        ", $event_id, sanitize_text_field($event_title), $event_start, $event_end, 0, null,$tipo_evento));
     
         // Agregar el evento a la lista de eventos insertados o actualizados
         $eventos_insertados[] = ['event_id' => $event_id];
@@ -230,20 +236,23 @@ function mep_sincronizar_eventos_y_asistentes() {
         if (!$exists) {
             $wpdb->query($wpdb->prepare("
                 INSERT INTO {$wpdb->prefix}ticketflow_scans 
-                (ticket_id, event_id, user_id, qr_code, scan_status, synced)
-                VALUES (%d, %d, %d, %s, %s, %d)
+                (ticket_id, event_id, user_id, qr_code, scan_status, synced, tipo)
+                VALUES (%d, %d, %d, %s, %s, %d, %s)
                 ON DUPLICATE KEY UPDATE
                     user_id = VALUES(user_id),
                     qr_code = VALUES(qr_code),
                     scan_status = VALUES(scan_status),
-                    synced = VALUES(synced)
+                    synced = VALUES(synced),
+                    tipo = VALUES(tipo)
+
             ", 
                 $a['ticket_number'],
                 $a['event_id'],
                 $a['user_id'],
                 $a['qr_code'],
                 $a['scan_status'],
-                $a['synced']
+                $a['synced'],
+                $a['tipo']
             ));
         }
     }
