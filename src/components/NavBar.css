@@ -5,12 +5,13 @@
   align-items: center;
   padding: 10px 20px;
   background-color: #003366; /* Azul marino oscuro */
-  color: #ffffff; /* Blanco */
+  color: #FFD700; /* Amarillo */
 }
 
 .logo {
   font-size: 1.5rem;
   font-weight: bold;
+  color: #FFD700; /* Amarillo */
 }
 
 .search-bar input {
@@ -19,8 +20,11 @@
   border-radius: 4px;
   width: 200px;
   margin-left: 20px;
+  background-color: #444; /* Fondo oscuro */
+  color: #FFD700; /* Amarillo */
 }
 
+/* Estilos para los ajustes del usuario */
 .user-settings {
   display: flex;
   align-items: center;
@@ -29,7 +33,7 @@
 .user-settings span {
   margin-left: 15px;
   cursor: pointer;
-  color: #ffffff; /* Blanco */
+  color: #FFD700; /* Amarillo */
 }
 
 /* Estilos para la navegación */
@@ -41,7 +45,7 @@
 }
 
 .nav-link {
-  color: #ffffff; /* Blanco */
+  color: #FFD700; /* Amarillo */
   text-decoration: none;
   padding: 10px 20px;
   margin: 0 10px;
@@ -55,6 +59,17 @@
 }
 
 .active-link {
-  background-color: #ffffff; /* Blanco */
+  background-color: #FFD700; /* Amarillo */
   color: #003366; /* Azul marino oscuro */
+}
+element.style {
+  padding: 20px;
+  border: 1px solid rgb(221, 221, 221);
+  border-radius: 5px;
+  background-color: rgb(61 58 58);
+  box-shadow: rgba(0, 0, 0, 0.1) 0px 0px 10px;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }

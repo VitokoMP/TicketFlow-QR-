@@ -69,3 +69,7 @@ export function EventoProvider({ children }) {
     </EventoContext.Provider>
   );
 }
+
+//estas leyendo acá porque estas necesitando recordar que ya traes los eventos, necesitamos 
+// ordenarlos y traer los asistentes, y luego hacer la validación de los códigos QR.
+// Si no hay eventos, no se puede escanear nada. Si hay eventos, se puede escanear.
