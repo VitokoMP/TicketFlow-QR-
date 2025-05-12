@@ -13,7 +13,7 @@ export function EventoProvider({ children }) {
   const [error, setError] = useState(null);
   const [isEventoDisponible, setIsEventoDisponible] = useState(false);
 
-  const API_URL = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/events`;
+  const API_URL = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/mep_get_eventos_activos`;
   // const API_URL = "http://localhost/wordpress/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes";
 
   const fetchEvento = async () => {

@@ -1,5 +1,3 @@
-
-
 <?php
 /**
  * Plugin Name: TicketFlow QR
@@ -85,10 +83,10 @@ class WPRK_Plugin {
         add_action('admin_enqueue_scripts', [$this, 'enqueue_scripts']);
     
         // Tareas programadas y eventos
-        add_action('init', [$this, 'schedule_ticket_update']);
-        add_action('ticketflow_update_scans', [$this, 'update_scans']);
-        add_action('save_post_event', [$this, 'ticketflow_trigger_on_event_publish'], 10, 3);
-        add_action('init', [$this, 'insert_events_to_db']); // Inserta eventos al iniciar el plugin
+//        add_action('init', [$this, 'schedule_ticket_update']);
+//        add_action('ticketflow_update_scans', [$this, 'update_scans']);
+//        add_action('save_post_event', [$this, 'ticketflow_trigger_on_event_publish'], 10, 3);
+//        add_action('init', [$this, 'insert_events_to_db']); // Inserta eventos al iniciar el plugin
     
         // REST API
         add_action('rest_api_init', [$this, 'create_rest_routes']);
@@ -347,7 +345,7 @@ public function mep_get_eventos_activos() {
         WHERE a.post_type = 'mep_events_attendees'
             AND e.post_type = 'mep_events'
             AND e.post_status = 'publish'
-            AND STR_TO_DATE(start_meta.meta_value, '%Y-%m-%d %H:%i:%s') <= NOW()
+            AND STR_TO_DATE(start_meta.meta_value, '%Y-%m-%d %H:%i:%s') >= NOW()
             AND STR_TO_DATE(end_meta.meta_value, '%Y-%m-%d %H:%i:%s') >= NOW()
             AND ea.meta_value REGEXP '^[0-9]+$'
             AND CAST(ea.meta_value AS UNSIGNED) IS NOT NULL
@@ -365,31 +363,25 @@ public function mep_get_eventos_activos() {
 }
 
 //tenemos que ver este modo
-function mep_get_asistentes_by_event_ids_ok(WP_REST_Request $request) {
-    return new WP_REST_Response(['mensaje' => '¡Funciona correctamente!'], 200);
-}
+function mep_get_asistentes_by_event_ids(WP_REST_Request $request) { 
+    $event_ids = (array) $request->get_param('event_ids'); // Forzamos a array
 
-
-//funcion para obtener los asistentes por ID de evento
-    function mep_get_asistentes_by_event_ids(WP_REST_Request $request) {
-        $event_ids = $request->get_param('event_ids');
-    
-        if (!is_array($event_ids)) {
-            return new WP_Error('invalid_param', 'Se requiere un array de IDs de evento.', ['status' => 400]);
-        }
-    
-        $asistentes = get_attendees_for_events($event_ids);
-    
-        // Agrupar por evento
-        $agrupado = [];
-        foreach ($asistentes as $asistente) {
-            $id = $asistente['event_id'];
-            if (!isset($agrupado[$id])) $agrupado[$id] = [];
-            $agrupado[$id][] = $asistente;
-        }
-    
-        return rest_ensure_response(['asistentes' => $agrupado]);
+    if (empty($event_ids)) {
+        return new WP_Error('invalid_param', 'Se requiere al menos un ID de evento.', ['status' => 400]);
     }
+
+    $asistentes = get_attendees_for_events($event_ids);
+    
+    // Agrupar por evento
+    $agrupado = [];
+    foreach ($asistentes as $asistente) {
+        $id = $asistente['event_id'];
+        if (!isset($agrupado[$id])) $agrupado[$id] = [];
+        $agrupado[$id][] = $asistente;
+    }
+
+    return rest_ensure_response(['asistentes' => $agrupado]);
+}
     
 
     function ejecutar_sincronizacion_con_boton() {
