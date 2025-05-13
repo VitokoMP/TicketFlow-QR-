@@ -2,7 +2,14 @@ import React from 'react';
 import { useEvento } from '../context/EventoContext';
 
 export default function EventoInfo() {
-  const { evento, isEventoDisponible, loading, error } = useEvento();
+  const { evento, isEventoDisponible, loading, error, asistentes, fetchAsistentes } = useEvento();
+
+  // Función para manejar el click en el botón
+  const handleConfirmarEvento = () => {
+    if (evento && evento.event_id) {
+      fetchAsistentes(evento.event_id); // Llamada para traer los asistentes del evento
+    }
+  };
 
   if (loading) return <p className="text-white">Cargando evento...</p>;
   if (error) return <p className="text-red-500">Error: {error}</p>;
@@ -20,6 +27,28 @@ export default function EventoInfo() {
           {isEventoDisponible ? 'Disponible' : 'No disponible'}
         </span>
       </p>
+
+      {isEventoDisponible && (
+        <div className="mt-4">
+          <button
+            onClick={handleConfirmarEvento}
+            className="bg-blue-500 text-white py-2 px-4 rounded-lg"
+          >
+            Confirmar Evento y Cargar Asistentes
+          </button>
+        </div>
+      )}
+
+      <h3 className="text-lg font-semibold mt-4">Asistentes:</h3>
+      {asistentes.length > 0 ? (
+        <ul>
+          {asistentes.map((asistente, index) => (
+            <li key={index}>{asistente.nombre || "Nombre no disponible"}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>No hay asistentes registrados.</p>
+      )}
     </div>
   );
 }

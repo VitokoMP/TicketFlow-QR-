@@ -7,69 +7,117 @@ export function useEvento() {
 }
 
 export function EventoProvider({ children }) {
-  const [evento, setEvento] = useState(null);
-  const [asistentes, setAsistentes] = useState([]); // aún sin uso
+  const [eventos, setEventos] = useState([]); // Lista completa de eventos
+  const [eventoSeleccionado, setEventoSeleccionado] = useState(null); // Evento activo
+  const [asistentes, setAsistentes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isEventoDisponible, setIsEventoDisponible] = useState(false);
+  const [eventId, setEventId] = useState(null); // ID del evento seleccionado
 
-  const API_URL = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/mep_get_eventos_activos`;
-  // const API_URL = "http://localhost/wordpress/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes";
+  const API_URL = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/eventos-activos`;
 
-  const fetchEvento = async () => {
+  // Obtener lista completa de eventos
+  const fetchEventos = async () => {
     setLoading(true);
     try {
       const response = await fetch(API_URL);
       if (!response.ok) throw new Error("Error al obtener los eventos");
-
       const data = await response.json();
       console.log("Eventos obtenidos:", data);
-
-      // Si es un array, filtramos el evento activo más próximo
-      const eventosActivos = data.filter(e => e.title && e.start_datetime); // O usa tu propia lógica
-      const eventoActivo = eventosActivos[0]; // podrías ordenarlos por fecha si hay más de uno
-
-      if (eventoActivo) {
-        setEvento({
-          nombre: eventoActivo.title,
-          fecha: eventoActivo.start_datetime,
-          lugar: eventoActivo.lugar || "Lugar no especificado",
-          estado: "activo", // si tu API no lo trae, asumimos
-        });
-        setIsEventoDisponible(true);
-      } else {
-        setEvento(null);
-        setIsEventoDisponible(false);
-      }
-
+      setEventos(data);
     } catch (err) {
-      console.error("Error en fetchEvento:", err);
+      console.error("Error en fetchEventos:", err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  // Obtener asistentes de un evento específico
+  const fetchAsistentes = async (event_id) => {
+    try {
+      const url = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/asistentes/${event_id}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error al obtener los asistentes: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data && data.asistentes) {
+        setAsistentes(data.asistentes);
+      }
+    } catch (err) {
+      console.error("Error en fetchAsistentes:", err);
+      setError(err.message);
+    }
+  };
+
+  // Seleccionar un evento y forzar carga de asistentes si no están
+const selectEvento = async (eventoSeleccionado) => {
+  setLoading(true);
+  try {
+    const id = eventoSeleccionado.event_id;
+    setEventId(id);
+
+    // 1. Guardamos el evento seleccionado
+    setEventos({
+      nombre: eventoSeleccionado.event_title || "Sin título",
+      fecha: eventoSeleccionado.event_start_date,
+      lugar: eventoSeleccionado.event_location || "Lugar no especificado",
+      estado: "activo",
+    });
+
+    // 2. SINCRONIZAMOS asistentes desde fuente externa hacia la tabla local
+    const syncUrl = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/sync-attendees/${id}`;
+    const syncResponse = await fetch(syncUrl);
+    if (!syncResponse.ok) throw new Error("Error al sincronizar asistentes");
+
+    const syncData = await syncResponse.json();
+    console.log("Sincronización completada:", syncData);
+
+    // 3. LEEMOS asistentes desde la tabla local ya poblada
+    await fetchAsistentes(id);
+
+    setIsEventoDisponible(true);
+  } catch (err) {
+    console.error("Error en selectEvento:", err);
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+ 
+
+  // Cargar eventos al montar
   useEffect(() => {
-    fetchEvento();
+    fetchEventos();
   }, []);
 
   return (
-    <EventoContext.Provider
+        <EventoContext.Provider
       value={{
-        evento,
+        eventos,
         asistentes,
         loading,
         error,
-        fetchEvento,
+        fetchEventos,
         isEventoDisponible,
+        eventId,
+        selectEvento, // 👈 necesario para que puedas usarlo desde el UI
       }}
     >
+
       {children}
     </EventoContext.Provider>
   );
 }
 
-//estas leyendo acá porque estas necesitando recordar que ya traes los eventos, necesitamos 
-// ordenarlos y traer los asistentes, y luego hacer la validación de los códigos QR.
-// Si no hay eventos, no se puede escanear nada. Si hay eventos, se puede escanear.
+export default EventoProvider;

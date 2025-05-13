@@ -16,6 +16,17 @@ if ( ! defined( 'ABSPATH' ) ) exit; // No direct access allowed.
 define ( 'WPRK_PATH', trailingslashit( plugin_dir_path( __FILE__ ) ) );
 define ( 'WPRK_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
 
+
+register_shutdown_function(function () {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        error_log("FATAL ERROR: " . print_r($error, true));
+    }
+});
+/**
+ * Cargar el archivo de funciones de WordPress.
+ */
+
 /**
  * Creamos jook.
  */
@@ -164,8 +175,14 @@ class WPRK_Plugin {
 
         ]);
 
-        register_rest_route('ticketflow/v1', '/asistentes', [
+        register_rest_route('ticketflow/v1', '/sync-attendees/(?P<event_id>\d+)', [
             'methods' => 'GET',
+            'callback' => [$this,'ticketflow_sync_and_get_attendees'],
+            'permission_callback' => '__return_true',
+        ]);
+
+        register_rest_route('ticketflow/v1', '/asistentes/(?P<id>\d+)', [
+            'methods' => 'POST',
             'callback' => [$this,'mep_get_asistentes_by_event_ids'],
             //'permission_callback' => function () {
               //  return current_user_can('escanear_qr') || current_user_can('exportar_qr');
@@ -175,11 +192,13 @@ class WPRK_Plugin {
         
         register_rest_route('ticketflow/v1', '/eventos-activos', [
             'methods' => 'GET',
-            'callback' => 'mep_get_eventos_activos',
-'permission_callback' => function() {
-    return current_user_can('escanear_qr') || current_user_can('exportar_qr');
-},
+            'callback' => [$this,'mep_get_eventos_activos'],
+            //'//permission_callback' => function() {
+            //return current_user_can('escanear_qr') || current_user_can('exportar_qr');
+        //},
+          'permission_callback' => '__return_true', // ajusta según seguridad
         ]);
+        
      }
  
 public function mep_sincronizar_eventos_y_asistentes() {
@@ -295,20 +314,23 @@ public function mep_sincronizar_eventos_y_asistentes() {
 
 // Función para traer eventos de la base de datos y que sucede!?
 public function mep_get_eventos_activos() {
+    error_log('Entrando en la función mep_get_eventos_activos');
+    
     global $wpdb;
     $tabla = $wpdb->prefix . 'ticketflow_scans';
 
     $query = "
-        SELECT 
-            event_id, 
-            event_title, 
-            event_start_date, 
-            event_end_date 
+            SELECT DISTINCT
+            event_id,
+            event_title,
+            event_start_date,
+            event_end_date,
+            event_location
         FROM $tabla
         WHERE tipo = 'evento'
-          AND event_end_date >= NOW()
-        GROUP BY event_id
+        AND event_end_date >= NOW()
         ORDER BY event_start_date ASC
+
     ";
 
     $resultados = $wpdb->get_results($query);
@@ -320,76 +342,92 @@ public function mep_get_eventos_activos() {
     return new WP_REST_Response($resultados, 200);
 }
 
- function get_attendees_for_events($event_ids) {
+function sync_attendees_to_scans_table($event_id) {
     global $wpdb;
+    $event_id = intval($event_id);
+    if ($event_id <= 0) return;
 
-    if (empty($event_ids)) return [];
-
-    // 1. Insertar asistentes de eventos activos
-    $wpdb->query("
+    $wpdb->query($wpdb->prepare("
         INSERT IGNORE INTO {$wpdb->prefix}ticketflow_scans (qr_code, event_id, scan_status, tipo)
         SELECT 
             a.post_name AS qr_code,
-            CAST(ea.meta_value AS UNSIGNED) AS event_id,
+            %d AS event_id,
             'pending' AS scan_status,
             'asistente' AS tipo
         FROM {$wpdb->prefix}posts a
-        LEFT JOIN {$wpdb->prefix}postmeta ea 
-            ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
-        LEFT JOIN {$wpdb->prefix}posts e 
-            ON e.ID = CAST(ea.meta_value AS UNSIGNED)
-        LEFT JOIN {$wpdb->prefix}postmeta start_meta 
-            ON start_meta.post_id = e.ID AND start_meta.meta_key = 'event_start_datetime'
-        LEFT JOIN {$wpdb->prefix}postmeta end_meta 
-            ON end_meta.post_id = e.ID AND end_meta.meta_key = 'event_end_datetime'
+        LEFT JOIN {$wpdb->prefix}postmeta ea ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
         WHERE a.post_type = 'mep_events_attendees'
-            AND e.post_type = 'mep_events'
-            AND e.post_status = 'publish'
-            AND STR_TO_DATE(start_meta.meta_value, '%Y-%m-%d %H:%i:%s') >= NOW()
-            AND STR_TO_DATE(end_meta.meta_value, '%Y-%m-%d %H:%i:%s') >= NOW()
-            AND ea.meta_value REGEXP '^[0-9]+$'
-            AND CAST(ea.meta_value AS UNSIGNED) IS NOT NULL
-    ");
+            AND ea.meta_value = %d
+    ", $event_id, $event_id));
 
-    // 2. Obtener los asistentes de los eventos indicados
+    if ($wpdb->last_error) {
+        error_log("Error insertando asistentes para evento $event_id: " . $wpdb->last_error);
+    }
+}
+
+ function get_attendees_for_events($event_ids) {
+    global $wpdb;
+
+    $event_ids = array_filter(array_map('intval', (array)$event_ids));
+    if (empty($event_ids)) {
+        error_log("No se recibieron IDs de evento válidos.");
+        return new WP_Error('no_event_ids', 'No se proporcionaron IDs de evento válidos', ['status' => 400]);
+    }
+
     $placeholders = implode(',', array_fill(0, count($event_ids), '%d'));
     $sql = "
         SELECT * FROM {$wpdb->prefix}ticketflow_scans
         WHERE event_id IN ($placeholders)
     ";
+
     $prepared = $wpdb->prepare($sql, ...$event_ids);
-
-    return $wpdb->get_results($prepared, ARRAY_A);
-}
-
-//tenemos que ver este modo
-function mep_get_asistentes_by_event_ids(WP_REST_Request $request) { 
-    $event_ids = (array) $request->get_param('event_ids'); // Forzamos a array
-
-    if (empty($event_ids)) {
-        return new WP_Error('invalid_param', 'Se requiere al menos un ID de evento.', ['status' => 400]);
+    if (!$prepared) {
+        return new WP_Error('sql_error', 'Error al preparar consulta SQL', ['status' => 500]);
     }
 
-    $asistentes = get_attendees_for_events($event_ids);
-    
-    // Agrupar por evento
-    $agrupado = [];
-    foreach ($asistentes as $asistente) {
-        $id = $asistente['event_id'];
-        if (!isset($agrupado[$id])) $agrupado[$id] = [];
-        $agrupado[$id][] = $asistente;
+    $result = $wpdb->get_results($prepared, ARRAY_A);
+
+    if ($wpdb->last_error) {
+        error_log("Error al obtener asistentes: " . $wpdb->last_error);
+        return new WP_Error('db_query_error', 'Error al consultar asistentes', ['status' => 500]);
     }
 
-    return rest_ensure_response(['asistentes' => $agrupado]);
+    return $result;
 }
-    
+
+
+/**
+ * FUNCION PARA OBTENER ASISTENTES POR EVENTOS
+ */
+
+ public function mep_get_asistentes_by_event_id($data) {
+    $id = intval($data['id']);
+
+    if (!$id) {
+        return new WP_Error('invalid_id', 'ID de evento inválido.', ['status' => 400]);
+    }
+
+    $asistentes = get_attendees_for_events([$id]); // Asegúrate que esta función acepte array de IDs
+
+    if (!is_array($asistentes)) {
+        return new WP_Error('no_attendees', 'No se pudieron obtener asistentes.', ['status' => 500]);
+    }
+
+    return rest_ensure_response([
+        'evento_id' => $id,
+        'asistentes' => $asistentes
+    ]);
+}
+
+    /**
+     * Función para ejecutar la sincronización de eventos y asistentes al hacer clic en el botón.
+     */
 
     function ejecutar_sincronizacion_con_boton() {
         if (isset($_POST['ejecutar_sincronizacion'])) {
             // Llama la función de sincronización
             $resultado = $this->mep_sincronizar_eventos_y_asistentes(); // ✅
-
-
+            
             if (is_wp_error($resultado)) {
                 echo '<div class="notice notice-error"><p>Error: ' . $resultado->get_error_message() . '</p></div>';
             } else {
@@ -424,6 +462,26 @@ function mep_get_asistentes_by_event_ids(WP_REST_Request $request) {
         // Asegúrate de cargar jQuery UI en el área de administración
         wp_enqueue_script('jquery-ui-sortable');  // jQuery UI ya está incluido en WordPress
     }
+
+    function ticketflow_sync_and_get_attendees($request) {
+    $event_id = intval($request['event_id']);
+    if ($event_id <= 0) {
+        return new WP_Error('invalid_event_id', 'El ID del evento no es válido', ['status' => 400]);
+    }
+
+    // Sincroniza
+    sync_attendees_to_scans_table($event_id);
+
+    // Obtiene asistentes ya sincronizados
+    $attendees = get_attendees_for_event($event_id);
+
+    return rest_ensure_response([
+        'event_id' => $event_id,
+        'total' => count($attendees),
+        'attendees' => $attendees
+    ]);
+}
+
 
     function get_events_from_db(WP_REST_Request $request) {
         global $wpdb;
@@ -462,7 +520,26 @@ function mep_get_asistentes_by_event_ids(WP_REST_Request $request) {
             return new WP_REST_Response('No se encontraron eventos.', 404);
         }
     }
+        //tenemos que ver este modo
+    function mep_get_asistentes_by_event_ids(WP_REST_Request $request) { 
+        $event_ids = (array) $request->get_param('event_ids'); // Forzamos a array
+
+        if (empty($event_ids)) {
+            return new WP_Error('invalid_param', 'Se requiere al menos un ID de evento.', ['status' => 400]);
+        }
+
+        $asistentes = get_attendees_for_events($event_ids);
         
+        // Agrupar por evento
+        $agrupado = [];
+        foreach ($asistentes as $asistente) {
+            $id = $asistente['event_id'];
+            if (!isset($agrupado[$id])) $agrupado[$id] = [];
+            $agrupado[$id][] = $asistente;
+        }
+
+        return rest_ensure_response(['asistentes' => $agrupado]);
+    }
 }
 
 new WPRK_Plugin();
