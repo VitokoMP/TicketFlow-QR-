@@ -260,6 +260,7 @@ public function mep_sincronizar_eventos_y_asistentes() {
             $event_title = $event['title'] ?? '';
             $event_start = $event['start_datetime'] ?? null;
             $event_end = $event['end_datetime'] ?? null;
+            $tipo_evento = 'evento'; // si no viene de otro lado
 
         
             // Verificar que los datos esenciales estén presentes
@@ -267,7 +268,7 @@ public function mep_sincronizar_eventos_y_asistentes() {
         
             // Insertar o actualizar el evento
             $wpdb->query($wpdb->prepare("
-                INSERT INTO {$wpdb->prefix}ticketflow_scans (event_id, event_title, event_start_date, event_end_date, synced, qr_code,tipo)
+                INSERT INTO {$wpdb->prefix}ticketflow_scans  (event_id, event_title, event_start_date, event_end_date, synced, qr_code, tipo)
                 VALUES (%d, %s, %s, %s, %d, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     event_title = VALUES(event_title),
@@ -438,8 +439,7 @@ function sync_attendees_to_scans_table($event_ids) {
         LEFT JOIN {$wpdb->prefix}postmeta ea ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
         WHERE a.post_type = 'mep_events_attendees'
             AND ea.meta_value = %d
-    ", $event_id, $event_id));
-
+    ", $event_id, $event_id));//INSERTANDO LOS ASISTENTES EN LA TABLA DE ESCANEOS
 
     if ($wpdb->last_error) {
         error_log("Error insertando asistentes para evento $event_id: " . $wpdb->last_error);
