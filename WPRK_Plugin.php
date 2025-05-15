@@ -391,7 +391,7 @@ public function mep_get_eventos_activos() {
     $resultados = $wpdb->get_results($query);
 
     if (!$resultados) {
-        return new WP_REST_Response(['message' => 'No hay eventos activos.'], 204);
+        return new WP_REST_Response([], 200);
     }
 
     return new WP_REST_Response($resultados, 200);
@@ -424,7 +424,7 @@ function sync_attendees_to_scans_table($event_ids) {
         if ($event_id <= 0) { //validamos que el id sea un entero <= 0 para evitar inyecciones sql
             error_log("ID de evento inválido: $event_id");
             continue;
-        }     
+        
     }
      // Verificar si el evento ya está sincronizado
  
@@ -444,11 +444,23 @@ function sync_attendees_to_scans_table($event_ids) {
     if ($wpdb->last_error) {
         error_log("Error insertando asistentes para evento $event_id: " . $wpdb->last_error);
     }
+    if ($wpdb->last_error) {
+            error_log("Error insertando asistentes para evento $event_id: " . $wpdb->last_error);
+        }
+
+    if ($result !== false) {
+            $totalInsertados += $result;
+            error_log("Insertados $result asistentes para evento $event_id");
+        } else {
+            error_log("No se insertaron asistentes para evento $event_id");
+        }
     //RESULTADO DE LA CONSULTA
     return $totalInsertados;
     
+    }
 }
-
+// Función para obtener asistentes de eventos específicos
+// Esta función obtiene los asistentes de eventos específicos
  public function get_attendees_for_events($event_ids) {
     global $wpdb;
 
@@ -549,7 +561,7 @@ public function ejecutar_sincronizacion_con_boton() {
      * @param WP_REST_Request $request
      * @return WP_REST_Response
 //  */
-    function ticketflow_sync_and_get_attendees($request) {
+function ticketflow_sync_and_get_attendees($request) {
     $event_id = intval($request['event_id']);
     if ($event_id <= 0) {
         return new WP_Error('invalid_event_id', 'El ID del evento no es válido', ['status' => 400]);
