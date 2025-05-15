@@ -232,9 +232,9 @@ public function mep_sincronizar_eventos_y_asistentes() {
             end_meta.meta_value AS end_datetime
         FROM {$wpdb->prefix}posts AS p
         LEFT JOIN {$wpdb->prefix}postmeta start_meta 
-            ON p.ID = start_meta.post_id AND start_meta.meta_key >= 'event_start_datetime'
+            ON p.ID = start_meta.post_id AND start_meta.meta_key = 'event_start_datetime'
         LEFT JOIN {$wpdb->prefix}postmeta end_meta 
-            ON p.ID = end_meta.post_id AND end_meta.meta_key >= 'event_end_datetime'
+            ON p.ID = end_meta.post_id AND end_meta.meta_key = 'event_end_datetime'
         WHERE p.post_type = 'mep_events'
         ORDER BY start_meta.meta_value ASC
     ", ARRAY_A);// Cambié a ARRAY_A para obtener un array asociativo
@@ -242,40 +242,24 @@ public function mep_sincronizar_eventos_y_asistentes() {
 //    $eventos_insertados = [];
     // Verificar si se encontraron eventos
     //en el desarrollo de esta funcion. 
-    /**
-     * if (empty($events)) { //entonces tendras que: llamar a la funcion de eventos activos
-           // error_log('No se insertaron eventos en la tickeflow_scans.');
-
-            // Llamar a la función de eventos activos
-            $activos_response = $this->mep_get_eventos_activos();
-            // Verificar si hay resultados (el código 200 asegura que vienen eventos)
-            
-            if ($activos_response->get_status() === 200) {
-                $activos = $activos_response->get_data();
-                // Obtener solo los IDs de los eventos activos
-                $event_ids = array_map(function($evento) {
-                    return intval($evento->event_id);
-                }, $activos);
-                // Llamar a la función de sincronización de asistentes
-                $asistentes = $this->sync_attendees_to_scans_table($events);//--- aqui van los ids de eventos activos
-                //pero la duda es si los activos[] son distintos a los event _ids[]
-            }
+    /** 
      */
         // Insertar o actualizar eventos en la tabla ticketflow_scans
         foreach ($events as $event) {
-            $event_id = $event['event_id'];
-            $event_title = $event['title'] ?? '';
-            $event_start = $event['start_datetime'] ?? null;
-            $event_end = $event['end_datetime'] ?? null;
-            $tipo_evento = 'evento'; // si no viene de otro lado
+            $event_id = intval($event['event_id']);
+            $event_title = sanitize_text_field($event['title'] ?? '');
+            $event_start = !empty($event['start_datetime']) ? sanitize_text_field($event['start_datetime']) : null;
+            $event_end = !empty($event['end_datetime']) ? sanitize_text_field($event['end_datetime']) : null;
+            $tipo_evento = 'evento';
 
-        
-            // Verificar que los datos esenciales estén presentes
-            if (!$event_start || !$event_end) continue;
-        
-            // Insertar o actualizar el evento
+            if (!$event_start || !$event_end) {
+            error_log("Evento ID {$event_id} omitido: falta fecha inicio o fin.");
+            continue;
+}
+
+
             $wpdb->query($wpdb->prepare("
-                INSERT INTO {$wpdb->prefix}ticketflow_scans  (event_id, event_title, event_start_date, event_end_date, synced, qr_code, tipo)
+                INSERT INTO {$wpdb->prefix}ticketflow_scans (event_id, event_title, event_start_date, event_end_date, synced, qr_code, tipo)
                 VALUES (%d, %s, %s, %s, %d, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     event_title = VALUES(event_title),
@@ -283,9 +267,8 @@ public function mep_sincronizar_eventos_y_asistentes() {
                     event_end_date = VALUES(event_end_date),
                     synced = VALUES(synced),
                     tipo = VALUES(tipo)
-            ", $event_id, sanitize_text_field($event_title), $event_start, $event_end, 0, null,$tipo_evento));
-        
-            // Agregar el evento a la lista de eventos insertados o actualizados
+            ", $event_id, $event_title, $event_start, $event_end, 0, null, $tipo_evento));
+
             $eventos_insertados[] = ['event_id' => $event_id];
         }
         // porfavor revisa el doble $$ --- errores clasicos.
@@ -293,7 +276,7 @@ public function mep_sincronizar_eventos_y_asistentes() {
         if (empty($event_ids)) {
             return new WP_REST_Response([
                 'success' => false,
-                'message' => 'No se encontraron eventos para sincronizar asistentes.'
+                'message' => 'No se encontraron eventos para sincronizar .'
             ], 404);
         }
        // error_log('Eventos activos encontrados: ' . print_r($activos, true));
@@ -304,45 +287,6 @@ public function mep_sincronizar_eventos_y_asistentes() {
     //  */
     // Obtener asistentes de la base de datos
     
-    // si activos_response esta vacio entonces no hay eventos activos, pero si trae datos y $$event_id, Event_ids no, entonces usamos el array de activos response.
-    // me refiero a que 
-    $asistentes = $this->sync_attendees_to_scans_table($event_ids); //el event_ids es un array de ids de eventos
-    if (empty($asistentes)) {
-        return new WP_REST_Response([
-            'success' => false,
-            'message' => 'No se encontraron asistentes para sincronizar.'
-        ], 404);
-    }
-    
-    foreach ($asistentes as $a) {
-        if (!isset($a['ticket_number'], $a['event_id'], $a['user_id'], $a['qr_code'])) {
-            continue; // salta registros incompletos
-        }
-    
-        $scan_status = isset($a['scan_status']) ? $a['scan_status'] : 'pending';
-        $synced = isset($a['synced']) ? (int)$a['synced'] : 0;
-        $tipo = isset($a['tipo']) ? $a['tipo'] : 'asistente';
-        // Verificar que los datos esenciales estén presentes   
-             $wpdb->query($wpdb->prepare("
-                INSERT INTO {$wpdb->prefix}ticketflow_scans 
-                (ticket_id, event_id, user_id, qr_code, scan_status, synced, tipo)
-                VALUES (%d, %d, %d, %s, %s, %d, %s)
-                ON DUPLICATE KEY UPDATE
-                    user_id = VALUES(user_id),
-                    qr_code = VALUES(qr_code),
-                    scan_status = VALUES(scan_status),
-                    synced = VALUES(synced),
-                    tipo = VALUES(tipo)
-            ",
-                $a['ticket_number'],
-                $a['event_id'],
-                $a['user_id'],
-                $a['qr_code'],
-                $scan_status,
-                $synced,
-                $tipo//KIND OF VALUE    -->$_COOKIE['tipo_asistente']
-            ));//
-        }// Agregar el asistente a la lista de asistentes insertados o actualizados
     //error_log("Insertando ticket: {$a['ticket_number']} para evento: {$a['event_id']}");
         return new WP_REST_Response([
         'success' => true,
@@ -412,56 +356,42 @@ public function mep_get_eventos_activos() {
 //  * @return int Número de asistentes sincronizados
 //  */
 function sync_attendees_to_scans_table($event_ids) {
-    //error_log('Entrando en la función sync_attendees_to_scans_table');
     global $wpdb;
-     
-    if(!is_array($event_ids)) {
-        $event_ids = [$event_ids]; // Asegurarse de que sea un array
-    }
-    $totalInsertados = 0;
-    // Obtener asistentes de la base de datos
-    //  
-    // Filtrar y validar los IDs de evento
-    $total_event_ids = count($event_ids);// Asegúrate de que $event_ids sea un array
-    if ($total_event_ids === 0) {
-        //error_log("No se recibieron IDs de evento válidos.");
-        return new WP_Error('no_event_ids', 'No se proporcionaron IDs de evento válidos', ['status' => 400]);
-    }
+
+    // Asegurar que siempre trabajamos con un array
+    $event_ids = (array) $event_ids;
+
+    $total_inserted = 0;
+
     foreach ($event_ids as $event_id) {
         $event_id = intval($event_id);
-            if ($event_id <= 0) { //validamos que el id sea un entero <= 0 para evitar inyecciones sql
-               // error_log("ID de evento inválido: $event_id");
-                continue;
+        if ($event_id <= 0) {
+            continue;
         }
-     // Verificar si el evento ya está sincronizado
- 
-    $result = $wpdb->query($wpdb->prepare("
-        INSERT IGNORE INTO {$wpdb->prefix}ticketflow_scans (qr_code, event_id, scan_status, tipo)
-        SELECT 
-            a.post_name AS qr_code,
-            %d AS event_id,
-            'pending' AS scan_status,
-            'asistente' AS tipo
-        FROM {$wpdb->prefix}posts a
-        LEFT JOIN {$wpdb->prefix}postmeta ea ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
-        WHERE a.post_type = 'mep_events_attendees'
-            AND ea.meta_value = %d
-    ", $event_id, $event_id));//INSERTANDO LOS ASISTENTES EN LA TABLA DE ESCANEOS
 
-    if ($wpdb->last_error) {
-        error_log("Error insertando asistentes para evento $event_id: " . $wpdb->last_error);
-    }
-    if ($result !== false) {
-            $totalInsertados += $result;
-           // error_log("Insertados $result asistentes para evento $event_id");
+        $result = $wpdb->query($wpdb->prepare("
+            INSERT IGNORE INTO {$wpdb->prefix}ticketflow_scans (qr_code, event_id, scan_status, tipo)
+            SELECT 
+                a.post_name AS qr_code,
+                %d AS event_id,
+                'pending' AS scan_status,
+                'asistente' AS tipo
+            FROM {$wpdb->prefix}posts a
+            LEFT JOIN {$wpdb->prefix}postmeta ea ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
+            WHERE a.post_type = 'mep_events_attendees'
+              AND ea.meta_value = %d
+        ", $event_id, $event_id));
+
+        if ($result !== false) {
+            $total_inserted += $result;
         } else {
-           // error_log("No se insertaron asistentes para evento $event_id");
-        }    
+            error_log("Error insertando asistentes para evento $event_id: " . $wpdb->last_error);
+        }
     }
-        //RESULTADO DE LA CONSULTA
-    return $totalInsertados;
 
+    return $total_inserted;
 }
+
 // Función para obtener asistentes de eventos específicos
 // Esta función obtiene los asistentes de eventos específicos
  public function get_attendees_for_events($event_ids) {
@@ -640,7 +570,104 @@ function ticketflow_sync_and_get_attendees($request) {
         }
 
         return rest_ensure_response(['asistentes' => $agrupado]);
+        //**
+        // function sync_attendees_to_scans_table($event_ids) {
+    //error_log('Entrando en la función sync_attendees_to_scans_table');
+ //   global $wpdb;
+  //   
+   // if(!is_array($event_ids)) {
+    //    $event_ids = [$event_ids]; // Asegurarse de que sea un array
+   // }
+   // $totalInsertados = 0;
+    // Obtener asistentes de la base de datos
+    //  
+    // Filtrar y validar los IDs de evento
+   // $total_event_ids = count($event_ids);// Asegúrate de que $event_ids sea un array
+   // if ($total_event_ids === 0) {
+        //error_log("No se recibieron IDs de evento válidos.");
+   //     return new WP_Error('no_event_ids', 'No se proporcionaron IDs de evento válidos', ['status' => 400]);
+   // }
+    //foreach ($event_ids as $event_id) {
+     //   $event_id = intval($event_id);
+      //      if ($event_id <= 0) { //validamos que el id sea un entero <= 0 para evitar inyecciones sql
+       //        // error_log("ID de evento inválido: $event_id");
+        //        continue;
+       // }
+     // Verificar si el evento ya está sincronizado
+ 
+  //  $result = $wpdb->query($wpdb->prepare("
+//        INSERT IGNORE INTO {$wpdb->prefix}ticketflow_scans (qr_code, event_id, scan_status, tipo)
+    // /   SELECT 
+     // /      a.post_name AS qr_code,
+       //     %d AS event_id,
+         //   'pending' AS scan_status,
+           // 'asistente' AS tipo
+      //  FROM {$wpdb->prefix}posts a
+     //   LEFT JOIN {$wpdb->prefix}postmeta ea ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
+      //  WHERE a.post_type = 'mep_events_attendees'
+      //      AND ea.meta_value = %d
+    ///", $event_id, $event_id));//INSERTANDO LOS ASISTENTES EN LA TABLA DE ESCANEOS
+
+//    if ($wpdb->last_error) {
+ //       error_log("Error insertando asistentes para evento $event_id: " . $wpdb->last_error);
+  //  }
+   // if ($result !== false) {
+    //        $totalInsertados += $result;
+           // error_log("Insertados $result asistentes para evento $event_id");
+      //  } else {
+    //       // error_log("No se insertaron asistentes para evento $event_id");
+      //  }    
+   // }
+        //RESULTADO DE LA CONSULTA
+    //return $totalInsertados;
+
+//}
+        //  */
     }
+
+    //*function metodo para recibir muchos eventos y traer los asistentes.
+    /**
+     *     // si activos_response esta vacio entonces no hay eventos activos, pero si trae datos y $$event_id, Event_ids no, entonces usamos el array de activos response.
+    // me refiero a que 
+    $asistentes = $this->sync_attendees_to_scans_table($event_ids); //el event_ids es un array de ids de eventos
+    if (empty($asistentes)) {
+        return new WP_REST_Response([
+            'success' => false,
+            'message' => 'No se encontraron asistentes para sincronizar.'
+        ], 404);
+    }
+    
+    foreach ($asistentes as $a) {
+        if (!isset($a['ticket_number'], $a['event_id'], $a['user_id'], $a['qr_code'])) {
+            continue; // salta registros incompletos
+        }
+    
+        $scan_status = isset($a['scan_status']) ? $a['scan_status'] : 'pending';
+        $synced = isset($a['synced']) ? (int)$a['synced'] : 0;
+        $tipo = isset($a['tipo']) ? $a['tipo'] : 'asistente';
+        // Verificar que los datos esenciales estén presentes   
+             $wpdb->query($wpdb->prepare("
+                INSERT INTO {$wpdb->prefix}ticketflow_scans 
+                (ticket_id, event_id, user_id, qr_code, scan_status, synced, tipo)
+                VALUES (%d, %d, %d, %s, %s, %d, %s)
+                ON DUPLICATE KEY UPDATE
+                    user_id = VALUES(user_id),
+                    qr_code = VALUES(qr_code),
+                    scan_status = VALUES(scan_status),
+                    synced = VALUES(synced),
+                    tipo = VALUES(tipo)
+            ",
+                $a['ticket_number'],
+                $a['event_id'],
+                $a['user_id'],
+                $a['qr_code'],
+                $scan_status,
+                $synced,
+                $tipo//KIND OF VALUE    -->$_COOKIE['tipo_asistente']
+            ));//
+        }// Agregar el asistente a la lista de asistentes insertados o actualizados
+
+     */
 }
 
 new WPRK_Plugin();
