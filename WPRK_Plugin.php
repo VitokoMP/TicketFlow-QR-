@@ -344,6 +344,20 @@ public function mep_get_eventos_activos() {
 
 function sync_attendees_to_scans_table($event_id) {
     global $wpdb;
+     
+    if(!is_array($event_ids)) {
+        $event_ids = [$event_ids]; // Asegurarse de que sea un array
+    }
+    $totalInsertados = 0;
+    // Obtener asistentes de la base de datos
+    //  
+    // Filtrar y validar los IDs de evento
+    $total_event_ids = count($event_ids);// Asegúrate de que $event_ids sea un array
+    if ($total_event_ids === 0) {
+        error_log("No se recibieron IDs de evento válidos.");
+        return new WP_Error('no_event_ids', 'No se proporcionaron IDs de evento válidos', ['status' => 400]);
+    }
+    foreach ($event_ids as $event_id) {
     $event_id = intval($event_id);
     if ($event_id <= 0) return;
 
