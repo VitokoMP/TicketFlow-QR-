@@ -1,3 +1,4 @@
+
 const handleStartScanner = async () => {
     if (loadingContext) return;
 

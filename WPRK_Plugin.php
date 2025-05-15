@@ -250,46 +250,46 @@ public function mep_sincronizar_eventos_y_asistentes() {
                     return intval($evento->event_id);
                 }, $activos);
                 // Llamar a la función de sincronización de asistentes
-                $asistentes = $this->sync_attendees_to_scans_table($event_ids);//--- aqui van los ids de eventos activos
+                $asistentes = $this->sync_attendees_to_scans_table($events);//--- aqui van los ids de eventos activos
                 //pero la duda es si los activos[] son distintos a los event _ids[]
             }
 
-    // Insertar o actualizar eventos en la tabla ticketflow_scans
-    foreach ($events as $event) {
-        $event_id = $event['event_id'];
-        $event_title = $event['title'] ?? '';
-        $event_start = $event['start_datetime'] ?? null;
-        $event_end = $event['end_datetime'] ?? null;
+        // Insertar o actualizar eventos en la tabla ticketflow_scans
+        foreach ($events as $event) {
+            $event_id = $event['event_id'];
+            $event_title = $event['title'] ?? '';
+            $event_start = $event['start_datetime'] ?? null;
+            $event_end = $event['end_datetime'] ?? null;
 
-    
-        // Verificar que los datos esenciales estén presentes
-        if (!$event_start || !$event_end) continue;
-    
-        // Insertar o actualizar el evento
-        $wpdb->query($wpdb->prepare("
-            INSERT INTO {$wpdb->prefix}ticketflow_scans (event_id, event_title, event_start_date, event_end_date, synced, qr_code,tipo)
-            VALUES (%d, %s, %s, %s, %d, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                event_title = VALUES(event_title),
-                event_start_date = VALUES(event_start_date),
-                event_end_date = VALUES(event_end_date),
-                synced = VALUES(synced),
-                tipo = VALUES(tipo)
-        ", $event_id, sanitize_text_field($event_title), $event_start, $event_end, 0, null,$tipo_evento));
-    
-        // Agregar el evento a la lista de eventos insertados o actualizados
-        $eventos_insertados[] = ['event_id' => $event_id];
-    }
-    // porfavor revisa el doble $$ --- errores clasicos.
-    $event_ids = array_map('intval', array_column($events, 'event_id'));
-    if (empty($event_ids)) {
-        return new WP_REST_Response([
-            'success' => false,
-            'message' => 'No se encontraron eventos para sincronizar asistentes.'
-        ], 404);
-    }
-    error_log('Eventos activos encontrados: ' . print_r($activos, true));
-    error_log('IDs a sincronizar: ' . implode(',', $event_ids));
+        
+            // Verificar que los datos esenciales estén presentes
+            if (!$event_start || !$event_end) continue;
+        
+            // Insertar o actualizar el evento
+            $wpdb->query($wpdb->prepare("
+                INSERT INTO {$wpdb->prefix}ticketflow_scans (event_id, event_title, event_start_date, event_end_date, synced, qr_code,tipo)
+                VALUES (%d, %s, %s, %s, %d, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    event_title = VALUES(event_title),
+                    event_start_date = VALUES(event_start_date),
+                    event_end_date = VALUES(event_end_date),
+                    synced = VALUES(synced),
+                    tipo = VALUES(tipo)
+            ", $event_id, sanitize_text_field($event_title), $event_start, $event_end, 0, null,$tipo_evento));
+        
+            // Agregar el evento a la lista de eventos insertados o actualizados
+            $eventos_insertados[] = ['event_id' => $event_id];
+        }
+        // porfavor revisa el doble $$ --- errores clasicos.
+        $event_ids = array_map('intval', array_column($events, 'event_id'));
+        if (empty($event_ids)) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'No se encontraron eventos para sincronizar asistentes.'
+            ], 404);
+        }
+        error_log('Eventos activos encontrados: ' . print_r($activos, true));
+        error_log('IDs a sincronizar: ' . implode(',', $event_ids));
 
     //**
     // Aqui estamos trabajando con los asistentes 
@@ -341,7 +341,7 @@ public function mep_sincronizar_eventos_y_asistentes() {
         'message' => 'Sincronización completa.'
     ], 200);// 200 OK
     
-}
+}}//
 
 // Función para traer eventos de la base de datos y que sucede!?
 // esta necesita se llamada desde la funcion que si no encuentra el tramo principal de eventos insertados

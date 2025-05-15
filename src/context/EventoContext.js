@@ -24,8 +24,13 @@ export function EventoProvider({ children }) {
       const response = await fetch(API_URL);
       if (!response.ok) throw new Error("Error al obtener los eventos");
       const data = await response.json();
-      console.log("Eventos obtenidos:", data);
-      setEventos(data);
+      console.log("Eventos obtenidos:", data[0].event_id );
+      setEventos({
+      event_id: data[0].event_id,
+      nombre: data[0].event_title,
+      fecha: data[0].event_start_date,
+      lugar: data[0].event_location,
+    });
     } catch (err) {
       console.error("Error en fetchEventos:", err);
       setError(err.message);
@@ -99,6 +104,7 @@ const selectEvento = async (eventoSeleccionado) => {
   // Cargar eventos al montar
   useEffect(() => {
     fetchEventos();
+    
   }, []);
 
   return (
