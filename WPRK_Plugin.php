@@ -204,9 +204,33 @@ public function enqueue_scripts($hook) {
         //},
           'permission_callback' => '__return_true', // ajusta según seguridad
         ]);
-        
+
+        register_rest_route('ticketflow/v1', '/read-code/(?P<event_id>\d+)', [
+            'methods' => 'GET',
+            'callback' => [$this,'mep_get_read_QR'],
+            //'//permission_callback' => function() {
+            //return current_user_can('escanear_qr') || current_user_can('exportar_qr');        
+        ]);
      }
  
+     /**function get_scan_status_by_qr($qr_code) {
+ Estoy realizandola conexion con los asistentes.
+ */
+function get_scan_status_by_qr($qr_code) {
+    global $wpdb;
+
+    $result = $wpdb->get_row($wpdb->prepare("
+        SELECT id, qr_code, scan_status, scan_time
+        FROM {$wpdb->prefix}ticketflow_scans
+        WHERE qr_code = %s
+        LIMIT 1
+    ", $qr_code), ARRAY_A);
+
+    return $result;
+}/**
+MAntenga el foco
+
+*/ 
 public function mep_sincronizar_eventos_y_asistentes() {
 
    // error_log('Entrando en la función mep_sincronizar_eventos_y_asistentes');
@@ -255,7 +279,7 @@ public function mep_sincronizar_eventos_y_asistentes() {
             if (!$event_start || !$event_end) {
             error_log("Evento ID {$event_id} omitido: falta fecha inicio o fin.");
             continue;
-}
+            }
 
 
             $wpdb->query($wpdb->prepare("
@@ -279,20 +303,23 @@ public function mep_sincronizar_eventos_y_asistentes() {
                 'message' => 'No se encontraron eventos para sincronizar .'
             ], 404);
         }
-       // error_log('Eventos activos encontrados: ' . print_r($activos, true));
-        //error_log('IDs a sincronizar: ' . implode(',', $event_ids));
-
+ 
     //**
     // Aqui estamos trabajando con los asistentes 
     //  */
-    // Obtener asistentes de la base de datos
-    
-    //error_log("Insertando ticket: {$a['ticket_number']} para evento: {$a['event_id']}");
+    // Obtener asistentes de la base de datos 
         return new WP_REST_Response([
         'success' => true,
         'message' => 'Sincronización completa.'
     ], 200);// 200 OK
     
+    $resultado = $this.ticketflow_sync_and_get_attendees($event_id);
+       
+        return rest_ensure_response([
+            'event_id' => $event_id,
+            'resultado' => $resultado,
+         ]);
+
 
 }//
 
@@ -360,7 +387,6 @@ function sync_attendees_to_scans_table($event_ids) {
 
     // Asegurar que siempre trabajamos con un array
     $event_ids = (array) $event_ids;
-
     $total_inserted = 0;
 
     foreach ($event_ids as $event_id) {
@@ -369,18 +395,22 @@ function sync_attendees_to_scans_table($event_ids) {
             continue;
         }
 
-        $result = $wpdb->query($wpdb->prepare("
-            INSERT IGNORE INTO {$wpdb->prefix}ticketflow_scans (qr_code, event_id, scan_status, tipo)
-            SELECT 
-                a.post_name AS qr_code,
-                %d AS event_id,
-                'pending' AS scan_status,
-                'asistente' AS tipo
-            FROM {$wpdb->prefix}posts a
-            LEFT JOIN {$wpdb->prefix}postmeta ea ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
-            WHERE a.post_type = 'mep_events_attendees'
-              AND ea.meta_value = %d
-        ", $event_id, $event_id));
+            $result = $wpdb->query($wpdb->prepare("
+                INSERT IGNORE INTO {$wpdb->prefix}ticketflow_scans (
+                    qr_code, ticket_id, event_id, scan_status, tipo
+                )
+                SELECT 
+                    a.post_name AS qr_code,
+                    a.ID AS ticket_id,
+                    %d AS event_id,
+                    'pending' AS scan_status,
+                    'asistente' AS tipo
+                FROM {$wpdb->prefix}posts a
+                LEFT JOIN {$wpdb->prefix}postmeta ea 
+                    ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
+                WHERE a.post_type = 'mep_events_attendees'
+                AND ea.meta_value = %d
+            ", $event_id, $event_id));
 
         if ($result !== false) {
             $total_inserted += $result;
@@ -496,22 +526,23 @@ public function ejecutar_sincronizacion_con_boton() {
   */
 function ticketflow_sync_and_get_attendees($request) {
     $event_id = intval($request['event_id']);
+
     if ($event_id <= 0) {
-        return new WP_Error('invalid_event_id', 'El ID del evento no es válido', ['status' => 400]);
+        return new WP_Error('invalid_event_id', 'ID de evento no válido', ['status' => 400]);
     }
 
-    // Sincroniza
-    sync_attendees_to_scans_table($event_id);
-
-    // Obtiene asistentes ya sincronizados
-    $attendees = get_attendees_for_event($event_id);
+    // Sincronizar asistentes y obtener lista
+    $inserted  = $this->sync_attendees_to_scans_table([$event_id]); // Asegúrate de pasar array
+    $attendees = $this->get_attendees_for_events($event_id);
 
     return rest_ensure_response([
         'event_id' => $event_id,
+        'inserted' => $inserted,
         'total' => count($attendees),
-        'attendees' => $attendees
+        'attendees' => $attendees,
     ]);
 }
+
 
 
     function get_events_from_db(WP_REST_Request $request) {
