@@ -114,12 +114,26 @@ export default function ScanQR() {
 
       console.log("Iniciando sincronización con la API...");
 
-      const res = await fetch(
-        "/wordpress/wp-json/ticketflow/v1/mep_sincronizar_eventos_y_asistentes",
-        {
-          method: "GET",
-        }
-      );
+      const eventId = eventoSeleccionado.event_id; // Obtener dinámicamente el ID del evento seleccionado
+
+      const res = await fetch(`/wordpress/wp-json/ticketflow/v1/asistentes/${eventId}`, {
+      method: "POST",
+      });
+
+      const data = await res.json();
+      console.log("Asistentes del evento:", data);
+
+      // Aquí podrías actualizar el contexto o el estado con los asistentes obtenidos
+      // Por ejemplo: setAsistentes(data);
+
+      await fetchEventos(); // Actualizar los eventos disponibles
+      setCameraStarted(true);
+    } catch (error) {
+      console.error("Error al llamar al endpoint:", error);
+      alert("No se pudo iniciar el escáner. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
 
       console.log("Respuesta de la API:", res);
 

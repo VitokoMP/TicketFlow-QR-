@@ -4,24 +4,24 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 20px;
-  background-color: #003366; /* Azul marino oscuro */
+  background-color: #000; /* Negro */
   color: #FFD700; /* Amarillo */
 }
 
 .logo {
   font-size: 1.5rem;
   font-weight: bold;
-  color: #2c2b25; /* Amarillo */
+  color: #FFD700; /* Amarillo */
 }
 
 .search-bar input {
   padding: 8px;
-  border: 1px solid #000e1bc5; /* Azul marino oscuro */
+  border: 1px solid #FFD700; /* Amarillo */
   border-radius: 4px;
   width: 200px;
   margin-left: 20px;
-  background-color: #444; /* Fondo oscuro */
-  color: #575c2ce0; /* Amarillo */
+  background-color: #222; /* Fondo oscuro */
+  color: #FFD700; /* Amarillo */
 }
 
 /* Estilos para los ajustes del usuario */
@@ -33,19 +33,19 @@
 .user-settings span {
   margin-left: 15px;
   cursor: pointer;
-  color: #b19e33ce; /* Amarillo */
+  color: #FFD700; /* Amarillo */
 }
 
 /* Estilos para la navegación */
 .nav {
   display: flex;
   justify-content: center;
-  background-color: #c71010dc; /* Azul marino medio */
+  background-color: #000; /* Negro */
   padding: 10px 0;
 }
 
 .nav-link {
-  color: #b69f21d7; /* Amarillo */
+  color: #FFD700; /*
   text-decoration: none;
   padding: 10px 20px;
   margin: 0 10px;
@@ -59,7 +59,7 @@
 }
 
 .active-link {
-  background-color: #6e6a51e1; /* Amarillo */
+  background-color: #ffee00; /* Amarillo */
   color: #003366; /* Azul marino oscuro */
 }
 element.style {

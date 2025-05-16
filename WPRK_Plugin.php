@@ -129,8 +129,18 @@ class WPRK_Plugin {
 
     public function menu_page_template() {
         echo '<div class="wrap">
-            <!-- Contenedor para la aplicación React sin el título -->
-            <div id="wprk-admin-app" style="padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);"></div>
+            <!-- Contenedor para la aplicación React con el nuevo estilo -->
+            <div id="wprk-admin-app" style="
+                padding: 20px; 
+                border: 1px solid rgb(221, 221, 221); 
+                border-radius: 5px; 
+                background-color: rgb(240, 240, 240); 
+                box-shadow: rgba(0, 0, 0, 0.1) 0px 0px 10px; 
+                width: 100%; 
+                height: 100vh; 
+                display: flex; 
+                flex-direction: column;
+            "></div>
         </div>';
     }
     
@@ -547,22 +557,23 @@ function sync_attendees_to_scans_table($event_ids) {
  * FUNCION PARA OBTENER ASISTENTES POR EVENTOS
  */
 
- public function mep_get_asistentes_by_event_id($data) {
-    $id = intval($data['id']);
+public function mep_get_asistentes_by_event_id($request) {
+    $event_id = intval($request['event_id']);
 
-    if (!$id) {
-        return new WP_Error('invalid_id', 'ID de evento inválido.', ['status' => 400]);
+    if (!$event_id || $event_id <= 0) {
+        return new WP_Error('invalid_event_id', 'ID de evento inválido.', ['status' => 400]);
     }
 
-    $asistentes = get_attendees_for_events([$id]); // Asegúrate que esta función acepte array de IDs
+    $asistentes = $this->get_attendees_for_events([$event_id]); // Asegúrate de usar la función correcta
 
-    if (!is_array($asistentes)) {
-        return new WP_Error('no_attendees', 'No se pudieron obtener asistentes.', ['status' => 500]);
+    if (is_wp_error($asistentes)) {
+        return $asistentes; // Retorna el error directamente si ocurre
     }
 
     return rest_ensure_response([
-        'evento_id' => $id,
-        'asistentes' => $asistentes
+        'success' => true,
+        'event_id' => $event_id,
+        'asistentes' => $asistentes,
     ]);
 }
 
