@@ -8,7 +8,7 @@ export default function ScanQR() {
     asistentes = [],
     scannedCode,
     setScannedCode,
-    fetchEvento,
+    fetchEventos,
     eventos,
     setLoading, // Aseguramos que setLoading venga del contexto
     loading: loadingContext,
@@ -29,7 +29,7 @@ export default function ScanQR() {
   // Llamar a fetchEvento si no hay eventos cargados al montar el componente
   useEffect(() => {
     if (!eventosSafe.length) {
-      fetchEvento("http://localhost/wordpress/wp-json/ticketflow/v1/eventos-activos");
+      fetchEventos("http://localhost/wordpress/wp-json/ticketflow/v1/eventos-activos");
     }
   }, []);
 
@@ -143,7 +143,7 @@ export default function ScanQR() {
 
       if (data.success) {
         console.log("Sincronización completa:", data.message);
-        await fetchEvento("http://localhost/wordpress/wp-json/ticketflow/v1/eventos-activos");
+        await fetchEventos("http://localhost/wordpress/wp-json/ticketflow/v1/eventos-activos");
         setCameraStarted(true);
       } else {
         alert("Error al sincronizar: " + data.message);
