@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { useEvento } from "../context/EventoContext";
-//import EventoInfo from "../components/EventInfo";
 
 export default function ScanQR() {
   const {
@@ -10,35 +9,25 @@ export default function ScanQR() {
     setScannedCode,
     fetchEventos,
     eventos,
-    setLoading, // Aseguramos que setLoading venga del contexto
+    setLoading,
     loading: loadingContext,
     error: errorContext,
   } = useEvento();
-  
-  const eventosSafe = Array.isArray(eventos) ? eventos : [];
-  // Aseguramos que eventos sea siempre un array
-  // Esto es importante para evitar errores si eventos no está definido
-  //Eventos y el Render del Fetch
 
+  const eventosSafe = Array.isArray(eventos) ? eventos : [];
   const [cameraStarted, setCameraStarted] = useState(false);
   const [validacion, setValidacion] = useState(null);
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null);
   const qrRef = useRef(null);
   const qrScanner = useRef(null);
 
-  // Llamar a fetchEvento si no hay eventos cargados al montar el componente
-  useEffect(() => {
-    if (!eventosSafe.length) {
-      fetchEventos("http://localhost/wordpress/wp-json/ticketflow/v1/eventos-activos");
-    }
-  }, []);
-
   // Seleccionar automáticamente el primer evento si no hay uno seleccionado
   useEffect(() => {
-  if (eventosSafe.length > 0 && !eventoSeleccionado && eventosSafe[0]?.event_id) {
-    setEventoSeleccionado(eventosSafe[0]);
-  }
-}, [eventosSafe]);
+    if (eventosSafe.length > 0 && !eventoSeleccionado && eventosSafe[0]?.event_id) {
+      setEventoSeleccionado(eventosSafe[0]);
+    }
+  }, [eventosSafe]);
+
   // Iniciar el escáner QR al seleccionar un evento
   useEffect(() => {
     if (eventoSeleccionado) {
@@ -47,51 +36,51 @@ export default function ScanQR() {
     }
   }, [eventoSeleccionado]);
 
- useEffect(() => {
-  if (!cameraStarted) return;
+  useEffect(() => {
+    if (!cameraStarted) return;
 
-  const qrCodeRegionId = "reader";
-  qrScanner.current = new Html5Qrcode(qrCodeRegionId);
+    const qrCodeRegionId = "reader";
+    qrScanner.current = new Html5Qrcode(qrCodeRegionId);
 
-  const startScanner = async () => {
-    try {
-      await qrScanner.current.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 300, height: 300 } },
-        (decodedText) => {
-          setScannedCode(decodedText);
-          validarCodigo(decodedText);
-          qrScanner.current?.stop();
-        },
-        (errorMessage) => {
-          console.warn("Error escaneando QR:", errorMessage);
-        }
-      );
-    } catch (err) {
-      console.error("No se pudo iniciar la cámara:", err);
-      alert("No se pudo acceder a la cámara. Asegúrate de haber dado permisos.");
-      setCameraStarted(false);
-    }
-  };
+    const startScanner = async () => {
+      try {
+        await qrScanner.current.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 300, height: 300 } },
+          (decodedText) => {
+            setScannedCode(decodedText);
+            validarCodigo(decodedText);
+            qrScanner.current?.stop();
+          },
+          (errorMessage) => {
+            console.warn("Error escaneando QR:", errorMessage);
+          }
+        );
+      } catch (err) {
+        console.error("No se pudo iniciar la cámara:", err);
+        alert("No se pudo acceder a la cámara. Asegúrate de haber dado permisos.");
+        setCameraStarted(false);
+      }
+    };
 
-  startScanner();
+    startScanner();
 
-  return () => {
-    if (qrScanner.current) {
-      qrScanner.current.stop().catch(() => {});
-    }
-  };
-}, [cameraStarted]);
+    return () => {
+      if (qrScanner.current) {
+        qrScanner.current.stop().catch(() => {});
+      }
+    };
+  }, [cameraStarted]);
 
   const validarCodigo = async (codigo) => {
-    if (!codigo || !eventoSeleccionado?.id) {
+    if (!codigo || !eventoSeleccionado?.event_id) {
       setValidacion("ERROR");
       return;
     }
 
     try {
       const res = await fetch(
-        `/wp-json/ticketflow/v1/escanear/${eventoSeleccionado.id}/${codigo}`
+        `/wp-json/ticketflow/v1/escanear/${eventoSeleccionado.event_id}/${codigo}`
       );
       if (!res.ok) throw new Error("QR no válido");
 
@@ -116,12 +105,7 @@ export default function ScanQR() {
 
   const handleStartScanner = async () => {
     if (loadingContext || !eventoSeleccionado?.event_id) {
-    alert("Por favor, selecciona un evento válido antes de iniciar el escáner.");
-    return;
-    }
-
-    if (loadingContext || !eventoSeleccionado) {
-      alert("Por favor, selecciona un evento antes de iniciar el escáner.");
+      alert("Por favor, selecciona un evento válido antes de iniciar el escáner.");
       return;
     }
 
@@ -143,7 +127,7 @@ export default function ScanQR() {
 
       if (data.success) {
         console.log("Sincronización completa:", data.message);
-        await fetchEventos("http://localhost/wordpress/wp-json/ticketflow/v1/eventos-activos");
+        await fetchEventos();
         setCameraStarted(true);
       } else {
         alert("Error al sincronizar: " + data.message);
@@ -156,6 +140,13 @@ export default function ScanQR() {
     }
   };
 
+  useEffect(() => {
+    console.log("Eventos disponibles:", eventosSafe);
+    console.log("Evento seleccionado:", eventoSeleccionado);
+    console.log("Asistentes:", asistentes);
+    if (errorContext) console.error("Error de contexto:", errorContext);
+  }, [eventosSafe, eventoSeleccionado, asistentes, errorContext]);
+
   return (
     <div className="h-screen w-screen bg-black text-white flex flex-col items-center justify-center">
       <h1 className="text-3xl text-yellow-400 font-bold mb-6">Ticket Flow</h1>
@@ -167,10 +158,10 @@ export default function ScanQR() {
         <select
           id="evento"
           className="px-4 py-2 rounded-lg text-black"
-          value={eventoSeleccionado?.id || ""}
+          value={eventoSeleccionado?.event_id || ""}
           onChange={(e) =>
             setEventoSeleccionado(
-              eventosSafe.find((evento) => evento.id === parseInt(e.target.value))
+              eventosSafe.find((evento) => evento.event_id === parseInt(e.target.value))
             )
           }
         >
@@ -198,7 +189,7 @@ export default function ScanQR() {
           <button
             onClick={handleStartScanner}
             className="px-6 py-3 bg-yellow-400 text-black rounded-lg"
-            disabled={eventosSafe.length === 0}
+            disabled={eventosSafe.length === 0 || !eventoSeleccionado}
           >
             Iniciar Escáner
           </button>

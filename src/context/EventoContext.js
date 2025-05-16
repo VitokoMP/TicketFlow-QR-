@@ -31,9 +31,9 @@ export const EventoProvider = ({ children }) => {
       setEventos(
         data.map((ev) => ({
           event_id: ev.event_id,
-          nombre: ev.event_title,
-          fecha: ev.event_start_date,
-          lugar: ev.event_location,
+          event_title: ev.event_title, // Cambiado para consistencia
+          event_start_date: ev.event_start_date,
+          event_location: ev.event_location,
         }))
       );
     } catch (err) {
@@ -67,7 +67,7 @@ export const EventoProvider = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
-      const id = evento.event_id;
+      const id = evento.event_id; // Usamos event_id para consistencia
       setEventId(id);
       setEventoSeleccionado(evento);
       const syncUrl = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/sync-attendees/${id}`;
@@ -102,6 +102,7 @@ export const EventoProvider = ({ children }) => {
         eventId,
         selectEvento,
         eventoSeleccionado,
+        setEventoSeleccionado, // Exponemos el setter
         setLoading,
       }}
     >
