@@ -11,17 +11,17 @@
 .logo {
   font-size: 1.5rem;
   font-weight: bold;
-  color: #FFD700; /* Amarillo */
+  color: #2c2b25; /* Amarillo */
 }
 
 .search-bar input {
   padding: 8px;
-  border: 1px solid #003366; /* Azul marino oscuro */
+  border: 1px solid #000e1bc5; /* Azul marino oscuro */
   border-radius: 4px;
   width: 200px;
   margin-left: 20px;
   background-color: #444; /* Fondo oscuro */
-  color: #FFD700; /* Amarillo */
+  color: #575c2ce0; /* Amarillo */
 }
 
 /* Estilos para los ajustes del usuario */
@@ -33,19 +33,19 @@
 .user-settings span {
   margin-left: 15px;
   cursor: pointer;
-  color: #FFD700; /* Amarillo */
+  color: #b19e33ce; /* Amarillo */
 }
 
 /* Estilos para la navegación */
 .nav {
   display: flex;
   justify-content: center;
-  background-color: #004080; /* Azul marino medio */
+  background-color: #c71010dc; /* Azul marino medio */
   padding: 10px 0;
 }
 
 .nav-link {
-  color: #FFD700; /* Amarillo */
+  color: #b69f21d7; /* Amarillo */
   text-decoration: none;
   padding: 10px 20px;
   margin: 0 10px;
@@ -59,7 +59,7 @@
 }
 
 .active-link {
-  background-color: #FFD700; /* Amarillo */
+  background-color: #6e6a51e1; /* Amarillo */
   color: #003366; /* Azul marino oscuro */
 }
 element.style {

@@ -110,7 +110,8 @@ const selectEvento = async (eventoSeleccionado) => {
   return (
         <EventoContext.Provider
       value={{
-        eventos,
+        eventos, // Ensure eventos is passed correctly
+        fetchEventos, // Include fetchEventos for external usage
         asistentes,
         loading,
         error,

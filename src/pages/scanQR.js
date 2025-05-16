@@ -14,12 +14,13 @@ export default function ScanQR() {
     loading: loadingContext,
     error: errorContext,
   } = useEvento();
-
+  
+  const eventosSafe = Array.isArray(eventos) ? eventos : [];
   // Aseguramos que eventos sea siempre un array
   // Esto es importante para evitar errores si eventos no está definido
   //Eventos y el Render del Fetch
-  
-  const eventosSafe = Array.isArray(eventos) ? eventos : [];
+
+  const eventosList = Array.isArray(eventos) ? eventos : [];
 
   const [cameraStarted, setCameraStarted] = useState(false);
   const [validacion, setValidacion] = useState(null);
@@ -182,25 +183,23 @@ export default function ScanQR() {
             Iniciar Escáner
           </button>
           <div id="reader" className="w-full max-w-md mt-6" ref={qrRef}></div>
-          {scannedCode && (
-            <div
-              className="mt-6 px-4 py-2 rounded-lg"
-              style={{
-                backgroundColor:
+          {validacion && (
+            <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+              <div
+                className={`text-6xl font-bold px-8 py-6 rounded-2xl shadow-2xl transition-all duration-500 ${
                   validacion === "OK"
-                    ? "limegreen"
+                    ? "bg-green-400 text-black"
                     : validacion === "YA_VALIDADO"
-                    ? "orange"
-                    : "red",
-                color: "black",
-              }}
-            >
-              {validacion === "OK"
-                ? "✅ Código válido"
-                : validacion === "YA_VALIDADO"
-                ? "⚠️ Código ya validado"
-                : "❌ Código no válido"}
-              <div className="mt-2">Código: {scannedCode}</div>
+                    ? "bg-orange-400 text-black"
+                    : "bg-red-500 text-white"
+                }`}
+              >
+                {validacion === "OK"
+                  ? "✅ CÓDIGO VÁLIDO"
+                  : validacion === "YA_VALIDADO"
+                  ? "⚠️ YA ESCANEADO"
+                  : "❌ CÓDIGO NO VÁLIDO"}
+              </div>
             </div>
           )}
         </>
