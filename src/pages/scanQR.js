@@ -71,7 +71,9 @@ export default function ScanQR() {
             }, 2000);
           },
           (errorMessage) => {
-            console.warn("Error escaneando QR:", errorMessage);
+            if (!errorMessage.includes("NotFoundException")) {
+              console.warn("Error escaneando QR:", errorMessage);
+            }
           }
         );
         console.log("🟢 Cámara lista y escáner iniciado.");
@@ -87,11 +89,14 @@ export default function ScanQR() {
     // Limpieza robusta del escáner al desmontar o reiniciar
     return () => {
       if (qrScanner.current) {
-        qrScanner.current.stop().then(() => {
-          console.log("🔴 Escáner detenido correctamente");
-        }).catch((err) => {
-          console.warn("⚠️ Error al detener el escáner:", err);
-        });
+        qrScanner.current.stop()
+          .then(() => qrScanner.current.clear())
+          .then(() => {
+            console.log("🔴 Escáner detenido y limpiado correctamente");
+          })
+          .catch((err) => {
+            console.warn("⚠️ Error al detener o limpiar el escáner:", err);
+          });
       }
     };
   }, [cameraStarted]);
@@ -103,20 +108,20 @@ export default function ScanQR() {
     }
 
     try {
-      const res = await fetch(
-        `/wp-json/ticketflow/v1/escanear/${eventoSeleccionado.event_id}/${codigo}`
-      );
+      const res = await fetch(`/wp-json/ticketflow/v1/escanear/${eventoSeleccionado.event_id}/${codigo}`);
       if (!res.ok) throw new Error("QR no válido");
 
       const data = await res.json();
 
-      if (data.scan_status === "pending") {
-        await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${data.id}`, {
-          method: "POST",
-        });
-
+      if (data.status === "OK") {
+        // Marca como escaneado si tienes endpoint y el asistente tiene id
+        if (data.asistente?.id) {
+          await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${data.asistente.id}`, { method: "POST" });
+        }
         setValidacion("OK");
-      } else if (data.scan_status === "scanned") {
+      } else if (data.status === "MISMATCH" || data.status === "NOT_FOUND") {
+        setValidacion("ERROR");
+      } else if (data.status === "SCANNED") {
         setValidacion("YA_VALIDADO");
       } else {
         setValidacion("ERROR");
