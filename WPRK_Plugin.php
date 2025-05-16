@@ -198,7 +198,7 @@ public function enqueue_scripts($hook) {
 
         // Registrar la ruta para obtener asistentes por evento --ok
         register_rest_route('ticketflow/v1', '/asistentes/(?P<event_id>\d+)', [
-            'methods' => 'POST',
+            'methods' => 'GET',
             'callback' => [$this,'mep_get_asistentes_by_event_ids'],
             //'permission_callback' => function () {
               //  return current_user_can('escanear_qr') || current_user_can('exportar_qr');

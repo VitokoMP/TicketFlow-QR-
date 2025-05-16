@@ -42,13 +42,14 @@ export const EventoProvider = ({ children }) => {
       setLoading(false);
     }
   };
-
+//AQUI ESTAMOS TRAYENDO LOS ASISTENTES DESDE LA API 
+//CON LO QUE SE SINCRONIZAN LOS ASISTENTES POR EVENTO
   const fetchAsistentes = async (event_id) => {
     setError(null);
     try {
       const url = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/asistentes/${event_id}`;
       const response = await fetch(url, {
-        method: "POST",
+        method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
