@@ -124,6 +124,7 @@ export function EventoProvider({ children }) {
         eventId,
         selectEvento,
         eventoSeleccionado, // Nuevo estado para el evento activo
+        setLoading,
       }}
     >
       {children}
