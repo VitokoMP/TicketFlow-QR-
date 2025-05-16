@@ -1,4 +1,4 @@
-
+/*
 const handleStartScanner = async () => {
     if (loadingContext) return;
 
@@ -28,4 +28,4 @@ const handleStartScanner = async () => {
     } finally {
       setLoading(false);
     }
-  };
+  };*/

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { useEvento } from "../context/EventoContext";
-import EventoInfo from "../components/EventInfo";
+//import EventoInfo from "../components/EventInfo";
 
 export default function ScanQR() {
   const {
@@ -20,53 +20,68 @@ export default function ScanQR() {
   // Esto es importante para evitar errores si eventos no está definido
   //Eventos y el Render del Fetch
 
-  const eventosList = Array.isArray(eventos) ? eventos : [];
-
   const [cameraStarted, setCameraStarted] = useState(false);
   const [validacion, setValidacion] = useState(null);
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null);
   const qrRef = useRef(null);
   const qrScanner = useRef(null);
 
-  // Llamar a fetchEvento al montar el componente
+  // Llamar a fetchEvento si no hay eventos cargados al montar el componente
   useEffect(() => {
-    fetchEvento("http://localhost/wordpress/wp-json/ticketflow/v1/eventos-activos");
+    if (!eventosSafe.length) {
+      fetchEvento("http://localhost/wordpress/wp-json/ticketflow/v1/eventos-activos");
+    }
   }, []);
 
   // Seleccionar automáticamente el primer evento si no hay uno seleccionado
   useEffect(() => {
-    if (eventosSafe.length > 0 && !eventoSeleccionado) {
-      setEventoSeleccionado(eventosSafe[0]);
-    }
-  }, [eventosSafe]);
-
+  if (eventosSafe.length > 0 && !eventoSeleccionado && eventosSafe[0]?.event_id) {
+    setEventoSeleccionado(eventosSafe[0]);
+  }
+}, [eventosSafe]);
+  // Iniciar el escáner QR al seleccionar un evento
   useEffect(() => {
-    if (!cameraStarted) return;
+    if (eventoSeleccionado) {
+      setCameraStarted(false);
+      setValidacion(null);
+    }
+  }, [eventoSeleccionado]);
 
-    const qrCodeRegionId = "reader";
-    qrScanner.current = new Html5Qrcode(qrCodeRegionId);
+ useEffect(() => {
+  if (!cameraStarted) return;
 
-    qrScanner.current
-      .start(
+  const qrCodeRegionId = "reader";
+  qrScanner.current = new Html5Qrcode(qrCodeRegionId);
+
+  const startScanner = async () => {
+    try {
+      await qrScanner.current.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 300, height: 300 } },
         (decodedText) => {
           setScannedCode(decodedText);
           validarCodigo(decodedText);
-          qrScanner.current.stop();
+          qrScanner.current?.stop();
         },
-        () => {}
-      )
-      .catch((err) => {
-        console.error("No se pudo iniciar la cámara", err);
-      });
+        (errorMessage) => {
+          console.warn("Error escaneando QR:", errorMessage);
+        }
+      );
+    } catch (err) {
+      console.error("No se pudo iniciar la cámara:", err);
+      alert("No se pudo acceder a la cámara. Asegúrate de haber dado permisos.");
+      setCameraStarted(false);
+    }
+  };
 
-    return () => {
-      if (qrScanner.current) {
-        qrScanner.current.stop().catch(() => {});
-      }
-    };
-  }, [cameraStarted, setScannedCode]);
+  startScanner();
+
+  return () => {
+    if (qrScanner.current) {
+      qrScanner.current.stop().catch(() => {});
+    }
+  };
+}, [cameraStarted]);
 
   const validarCodigo = async (codigo) => {
     if (!codigo || !eventoSeleccionado?.id) {
@@ -100,6 +115,11 @@ export default function ScanQR() {
   };
 
   const handleStartScanner = async () => {
+    if (loadingContext || !eventoSeleccionado?.event_id) {
+    alert("Por favor, selecciona un evento válido antes de iniciar el escáner.");
+    return;
+    }
+
     if (loadingContext || !eventoSeleccionado) {
       alert("Por favor, selecciona un evento antes de iniciar el escáner.");
       return;
