@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.0.4
+ * Version: 1.0.5
  * Text-Domain: wp-react-ticketflow-qr 
  */
 //estare activando la ruta para app escaner!
@@ -207,30 +207,113 @@ public function enqueue_scripts($hook) {
         ]);
 
         // Registrar la ruta para obtener el estado de escaneo por QR--pendiente
-        register_rest_route('ticketflow/v1', '/escanear/(?P<qr_code>[a-zA-Z0-9\-]+)', [
+        register_rest_route('ticketflow/v1', '/escanear/(?P<event_id>\d+)/(?P<qr_code>[a-zA-Z0-9\-]+)', [
             'methods' => 'GET',
             'callback' => function($request) {
-                $qr_code = $request['qr_code'];
-                return $this->get_scan_status_by_qr($qr_code);
+            $event_id = intval($request['event_id']);
+            $qr_code = sanitize_text_field($request['qr_code']);
+            return $this->get_scan_status_by_qr($event_id, $qr_code);
             },
             'permission_callback' => '__return_true', // ajusta según seguridad
         ]);
+
+        // Registrar la ruta para marcar un ticket como escaneado
+        register_rest_route('ticketflow/v1', '/mark-as-scanned/(?P<id>\d+)', [
+            'methods' => 'POST',
+            'callback' => [$this, 'mark_as_scanned'],
+            'permission_callback' => '__return_true', // Ajusta según seguridad
+        ]);
+
+
     }
-     /**function get_scan_status_by_qr($qr_code) {
+ 
+public function mark_as_scanned($request) {
+    global $wpdb;
+    $id = intval($request['id']);
+
+    $table = "{$wpdb->prefix}ticketflow_scans";
+
+    // Verificar si el estado actual es 'pending' y el tipo es 'asistente'
+    $current_status = $wpdb->get_row($wpdb->prepare("
+        SELECT scan_status, tipo 
+        FROM $table 
+        WHERE id = %d
+    ", $id), ARRAY_A);
+
+    if (!$current_status || $current_status['tipo'] !== 'asistente') {
+        return new WP_Error('invalid_type', 'El registro no es de tipo asistente.', ['status' => 400]);
+    }
+
+    if ($current_status['scan_status'] !== 'pending') {
+        return new WP_Error('already_scanned', 'El asistente ya ha sido escaneado o no está en estado pendiente.', ['status' => 400]);
+    }
+
+    // Actualizar solo si el estado es 'pending' y el tipo es 'asistente'
+    $updated = $wpdb->update(
+        $table,
+        [
+            'scan_status' => 'scanned',
+            'scan_time'   => current_time('mysql', 1),
+        ],
+        ['id' => $id],
+        ['%s', '%s'],
+        ['%d']
+    );
+
+    if ($updated !== false) {
+        return new WP_REST_Response([
+            'success' => true,
+            'message' => 'Asistente marcado como escaneado.',
+        ], 200);
+    } else {
+        return new WP_Error('update_failed', 'No se pudo actualizar el estado.', ['status' => 500]);
+    }
+}
+    /**function get_scan_status_by_qr($qr_code) {
         Estoy realizandola conexion con los asistentes.
         */
-public function get_scan_status_by_qr($qr_code) {
+public function get_scan_status_by_qr($event_id, $qr_code) {
     global $wpdb;
 
-    $result = $wpdb->get_row($wpdb->prepare("
-        SELECT id, qr_code, scan_status, scan_time,event_id, event_title, event_start_date, event_end_date
+    // Primero: ¿El QR existe para el evento actual?
+    $asistente = $wpdb->get_row($wpdb->prepare("
+        SELECT id, qr_code, scan_status, scan_time, event_id, event_title
         FROM {$wpdb->prefix}ticketflow_scans
-        WHERE qr_code = %s and tipo='asistente'
+        WHERE qr_code = %s AND event_id = %d AND tipo = 'asistente'
+        LIMIT 1
+    ", $qr_code, $event_id), ARRAY_A);
+
+    if ($asistente) {
+        return [
+            'status' => 'OK',
+            'asistente' => $asistente,
+            'mensaje' => 'Asistente válido para este evento.'
+        ];
+    }
+
+    // Segundo: ¿Existe el QR en otro evento?
+    $otro = $wpdb->get_row($wpdb->prepare("
+        SELECT id, qr_code, scan_status, scan_time, event_id, event_title
+        FROM {$wpdb->prefix}ticketflow_scans
+        WHERE qr_code = %s AND tipo = 'asistente'
         LIMIT 1
     ", $qr_code), ARRAY_A);
 
-    return $result;
+    if ($otro) {
+        return [
+            'status' => 'MISMATCH',
+            'asistente' => $otro,
+            'mensaje' => 'Este código existe, pero no corresponde a este evento.'
+        ];
+    }
+
+    // Tercero: No existe
+    return [
+        'status' => 'NOT_FOUND',
+        'mensaje' => 'Este QR no está registrado.'
+    ];
 }
+
 /**
  * Sabremos cuidar lo que nos importa, aca avanzamos para organizar los estados.
 MAntenga el foco
