@@ -134,7 +134,7 @@ class WPRK_Plugin {
                 padding: 20px; 
                 border: 1px solid rgb(221, 221, 221); 
                 border-radius: 5px; 
-                background-color: rgb(240, 240, 240); 
+                background-color: rgb(52, 54, 49); 
                 box-shadow: rgba(0, 0, 0, 0.1) 0px 0px 10px; 
                 width: 100%; 
                 height: 100vh; 
