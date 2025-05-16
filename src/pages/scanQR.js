@@ -115,7 +115,7 @@ export default function ScanQR() {
       console.log("Iniciando sincronización con la API...");
 
       const res = await fetch(
-        "/wp-json/mep/v1/mep_sincronizar_eventos_y_asistentes",
+        "/wordpress/wp-json/ticketflow/v1/mep_sincronizar_eventos_y_asistentes",
         {
           method: "GET",
         }
