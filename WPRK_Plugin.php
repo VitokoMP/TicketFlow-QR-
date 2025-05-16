@@ -16,13 +16,11 @@ if ( ! defined( 'ABSPATH' ) ) exit; // No direct access allowed.
 define ( 'WPRK_PATH', trailingslashit( plugin_dir_path( __FILE__ ) ) );
 define ( 'WPRK_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
 
-
-register_shutdown_function(function () {
-    $error = error_get_last();
-    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
-        error_log("FATAL ERROR: " . print_r($error, true));
-    }
+register_activation_hook(__FILE__, function() {
+    flush_rewrite_rules();
 });
+//PRECISO PARA EL TEMA DE LAS RUTAS EN CACHÉ
+
 /**
  * Cargar el archivo de funciones de WordPress.
  */
@@ -163,6 +161,7 @@ public function enqueue_scripts($hook) {
      */
 
     public function create_rest_routes() {
+        // Registrar la ruta para sincronizar eventos y asistentes-- ok
         register_rest_route('ticketflow/v1', '/mep_sincronizar_eventos_y_asistentes', [
             'methods'  => 'POST',
             'callback' => [$this,'mep_sincronizar_eventos_y_asistentes'],
@@ -172,22 +171,23 @@ public function enqueue_scripts($hook) {
             'permission_callback' => '__return_true', // Temporalmente para pruebas
         ]);
 
+        // Registrar la ruta para obtener eventos --ok
         register_rest_route('ticketflow/v1', '/events', [
             'methods' => 'GET',
             'callback' => [$this, 'get_events_from_db'],
             'permission_callback' => function() {
-    return current_user_can('escanear_qr') || current_user_can('exportar_qr');
-},
-
+            return current_user_can('escanear_qr') || current_user_can('exportar_qr');},
         ]);
 
+        // Registrar la ruta para obtener asistentes por evento--ok
         register_rest_route('ticketflow/v1', '/sync-attendees/(?P<event_id>\d+)', [
             'methods' => 'GET',
             'callback' => [$this,'ticketflow_sync_and_get_attendees'],
             'permission_callback' => '__return_true',
         ]);
 
-        register_rest_route('ticketflow/v1', '/asistentes/(?P<id>\d+)', [
+        // Registrar la ruta para obtener asistentes por evento --ok
+        register_rest_route('ticketflow/v1', '/asistentes/(?P<event_id>\d+)', [
             'methods' => 'POST',
             'callback' => [$this,'mep_get_asistentes_by_event_ids'],
             //'permission_callback' => function () {
@@ -196,6 +196,7 @@ public function enqueue_scripts($hook) {
             'permission_callback' => '__return_true', // ajusta según seguridad
         ]);
         
+        // Registrar la ruta para obtener eventos activos--ok
         register_rest_route('ticketflow/v1', '/eventos-activos', [
             'methods' => 'GET',
             'callback' => [$this,'mep_get_eventos_activos'],
@@ -205,29 +206,33 @@ public function enqueue_scripts($hook) {
           'permission_callback' => '__return_true', // ajusta según seguridad
         ]);
 
-        register_rest_route('ticketflow/v1', '/read-code/(?P<event_id>\d+)', [
+        // Registrar la ruta para obtener el estado de escaneo por QR--pendiente
+        register_rest_route('ticketflow/v1', '/escanear/(?P<qr_code>[a-zA-Z0-9\-]+)', [
             'methods' => 'GET',
-            'callback' => [$this,'mep_get_read_QR'],
-            //'//permission_callback' => function() {
-            //return current_user_can('escanear_qr') || current_user_can('exportar_qr');        
+            'callback' => function($request) {
+                $qr_code = $request['qr_code'];
+                return $this->get_scan_status_by_qr($qr_code);
+            },
+            'permission_callback' => '__return_true', // ajusta según seguridad
         ]);
-     }
- 
+    }
      /**function get_scan_status_by_qr($qr_code) {
- Estoy realizandola conexion con los asistentes.
- */
-function get_scan_status_by_qr($qr_code) {
+        Estoy realizandola conexion con los asistentes.
+        */
+public function get_scan_status_by_qr($qr_code) {
     global $wpdb;
 
     $result = $wpdb->get_row($wpdb->prepare("
-        SELECT id, qr_code, scan_status, scan_time
+        SELECT id, qr_code, scan_status, scan_time,event_id, event_title, event_start_date, event_end_date
         FROM {$wpdb->prefix}ticketflow_scans
-        WHERE qr_code = %s
+        WHERE qr_code = %s and tipo='asistente'
         LIMIT 1
     ", $qr_code), ARRAY_A);
 
     return $result;
-}/**
+}
+/**
+ * Sabremos cuidar lo que nos importa, aca avanzamos para organizar los estados.
 MAntenga el foco
 
 */ 
@@ -534,6 +539,7 @@ function ticketflow_sync_and_get_attendees($request) {
     // Sincronizar asistentes y obtener lista
     $inserted  = $this->sync_attendees_to_scans_table([$event_id]); // Asegúrate de pasar array
     $attendees = $this->get_attendees_for_events($event_id);
+    $mep_get_asistentes_by_event_ids = $this->mep_get_asistentes_by_event_id($event_id);
 
     return rest_ensure_response([
         'event_id' => $event_id,
