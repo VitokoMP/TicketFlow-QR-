@@ -687,6 +687,7 @@ function ticketflow_sync_and_get_attendees($request) {
     $mep_get_asistentes_by_event_ids = $this->mep_get_asistentes_by_event_id($event_id);
 
     return rest_ensure_response([
+        'success' => true,
         'event_id' => $event_id,
         'inserted' => $inserted,
         'total' => count($attendees),

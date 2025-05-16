@@ -37,11 +37,15 @@ export default function ScanQR() {
   }, [eventoSeleccionado]);
 
   useEffect(() => {
+    // Mostrar en consola el estado de cameraStarted cuando cambie
+    console.log("Estado de cameraStarted:", cameraStarted);
+    // Si cameraStarted es false, no iniciar el escáner
     if (!cameraStarted) return;
 
     const qrCodeRegionId = "reader";
     qrScanner.current = new Html5Qrcode(qrCodeRegionId);
-
+// Quiero agregar logs para saber cuándo inicia el escáner y si la cámara está lista
+    console.log("🟡 Iniciando escáner QR...");
     const startScanner = async () => {
       try {
         await qrScanner.current.start(
@@ -50,7 +54,6 @@ export default function ScanQR() {
           (decodedText) => {
             setScannedCode(decodedText);
             validarCodigo(decodedText);
-            qrScanner.current?.stop();
           },
           (errorMessage) => {
             console.warn("Error escaneando QR:", errorMessage);
@@ -103,7 +106,7 @@ export default function ScanQR() {
     }
   };
 
- const handleStartScanner = async () => {
+const handleStartScanner = async () => {
   if (loadingContext || !eventoSeleccionado?.event_id) {
     alert("Por favor, selecciona un evento válido antes de iniciar el escáner.");
     return;
@@ -111,42 +114,64 @@ export default function ScanQR() {
 
   try {
     setLoading(true);
-    console.log("Iniciando sincronización con la API...");
+    console.log("🟡 Iniciando sincronización con la API...");
 
     const eventId = eventoSeleccionado.event_id;
-    const res = await fetch(`/wordpress/wp-json/ticketflow/v1/asistentes/${eventId}`, {
-      method: "POST",
+    console.log("📌 ID del evento seleccionado:", eventId);
+
+    const res = await fetch(`/wordpress/wp-json/ticketflow/v1/sync-attendees/${eventId}`, {
+      method: "GET",
     });
+
+    console.log("📡 Estado de la respuesta HTTP:", res.status, res.statusText);
 
     if (!res.ok) {
       throw new Error(`Error en la respuesta del servidor: ${res.statusText}`);
     }
 
     const data = await res.json();
-    console.log("Respuesta de la API:", data);
+    console.log("📥 Datos recibidos desde sync-attendees:", data);
 
     if (data.success) {
-      console.log("Sincronización completa:", data.message);
+      console.log("✅ Sincronización exitosa:", data.message);
+
+      // Verifica si los datos que vinieron tienen asistentes inesperados
+      if (Array.isArray(data.attendees)) {
+        console.log("🧾 Lista de asistentes sincronizados:", data.attendees);
+      }
+
+      // Refresca la data desde el backend (contexto)
       await fetchEventos();
+
+      // Revisa si luego de fetchEventos() los asistentes están correctos
+      setTimeout(() => {
+        console.log("📊 Estado de asistentes tras fetchEventos:", asistentes);
+      }, 1000); // Delay para esperar que el contexto se actualice
+
       setCameraStarted(true);
     } else {
+      console.warn("⚠️ Fallo en sincronización:", data.message);
       alert("Error al sincronizar: " + (data.message || "Respuesta inesperada."));
     }
   } catch (error) {
-    console.error("Error al llamar al endpoint:", error);
+    console.error("❌ Error al llamar al endpoint:", error);
     alert("No se pudo iniciar el escáner. Intenta de nuevo.");
   } finally {
     setLoading(false);
+    console.log("🔁 Finalizó proceso handleStartScanner");
   }
 };
-
+  // Manejo de errores y logs
 
   useEffect(() => {
-    console.log("Eventos disponibles:", eventosSafe);
-    console.log("Evento seleccionado:", eventoSeleccionado);
-    console.log("Asistentes:", asistentes);
-    if (errorContext) console.error("Error de contexto:", errorContext);
-  }, [eventosSafe, eventoSeleccionado, asistentes, errorContext]);
+    // Verificar que el div con id 'reader' esté montado y tenga tamaño visible antes de iniciar cámara
+    if (qrRef.current && qrRef.current.offsetWidth > 0 && qrRef.current.offsetHeight > 0) {
+        console.log("🟢 El div 'reader' está listo para iniciar la cámara.");}
+      console.log("Eventos disponibles:", eventosSafe);
+      console.log("Evento seleccionado:", eventoSeleccionado);
+      console.log("Asistentes:", asistentes);
+      if (errorContext) console.error("Error de contexto:", errorContext);
+    }, [eventosSafe, eventoSeleccionado, asistentes, errorContext]);
 
   return (
     <div className="h-screen w-screen bg-black text-white flex flex-col items-center justify-center">
@@ -194,6 +219,7 @@ export default function ScanQR() {
           >
             Iniciar Escáner
           </button>
+          
           <div id="reader" className="w-full max-w-md mt-6" ref={qrRef}></div>
           {validacion && (
             <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">

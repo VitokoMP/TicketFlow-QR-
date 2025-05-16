@@ -6,6 +6,9 @@
   padding: 10px 20px;
   background-color: #000; /* Negro */
   color: #FFD700; /* Amarillo */
+  position: sticky;
+  top: 0;
+  z-index: 1000;
 }
 
 .logo {
@@ -14,12 +17,16 @@
   color: #FFD700; /* Amarillo */
 }
 
+.search-bar {
+  display: flex;
+  align-items: center;
+}
+
 .search-bar input {
   padding: 8px;
   border: 1px solid #FFD700; /* Amarillo */
   border-radius: 4px;
   width: 200px;
-  margin-left: 20px;
   background-color: #222; /* Fondo oscuro */
   color: #FFD700; /* Amarillo */
 }
@@ -28,10 +35,10 @@
 .user-settings {
   display: flex;
   align-items: center;
+  gap: 15px;
 }
 
 .user-settings span {
-  margin-left: 15px;
   cursor: pointer;
   color: #FFD700; /* Amarillo */
 }
@@ -42,13 +49,13 @@
   justify-content: center;
   background-color: #000; /* Negro */
   padding: 10px 0;
+  gap: 20px;
 }
 
 .nav-link {
-  color: #FFD700; /*
+  color: #FFD700; /* Amarillo */
   text-decoration: none;
   padding: 10px 20px;
-  margin: 0 10px;
   border-radius: 4px;
   font-size: 1rem;
   transition: background-color 0.3s ease;
@@ -62,14 +69,18 @@
   background-color: #ffee00; /* Amarillo */
   color: #003366; /* Azul marino oscuro */
 }
-element.style {
+
+/* Estilos generales para el contenedor principal */
+.container {
   padding: 20px;
   border: 1px solid rgb(221, 221, 221);
   border-radius: 5px;
-  background-color: rgb(61 58 58);
+  background-color: rgb(61, 58, 58);
   box-shadow: rgba(0, 0, 0, 0.1) 0px 0px 10px;
   width: 100%;
   height: 100vh;
   display: flex;
   flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
 }
