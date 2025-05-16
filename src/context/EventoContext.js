@@ -47,7 +47,7 @@ export const EventoProvider = ({ children }) => {
   const fetchAsistentes = async (event_id) => {
     setError(null);
     try {
-      const url = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/asistentes/${event_id}`;
+      const url = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/asistentes?event_ids[]=${event_id}`;
       const response = await fetch(url, {
         method: "GET",
         headers: {
