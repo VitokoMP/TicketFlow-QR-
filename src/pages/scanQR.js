@@ -12,6 +12,7 @@ export default function ScanQR() {
     setLoading,
     loading: loadingContext,
     error: errorContext,
+    selectEvento,
   } = useEvento();
 
   const eventosSafe = Array.isArray(eventos) ? eventos : [];
@@ -39,15 +40,13 @@ export default function ScanQR() {
   }, [eventoSeleccionado]);
 
   useEffect(() => {
-    // Mostrar en consola el estado de cameraStarted cuando cambie
     console.log("Estado de cameraStarted:", cameraStarted);
-    // Si cameraStarted es false, no iniciar el escáner
     if (!cameraStarted) return;
 
     // Verificación defensiva del div 'reader'
     if (!qrRef.current || qrRef.current.offsetWidth === 0 || qrRef.current.offsetHeight === 0) {
-      console.error("❌ El div 'reader' no está disponible o no tiene tamaño visible.");
-      setCameraStarted(false);
+      // Reintenta iniciar el escáner tras un pequeño delay si el div aún no está listo
+      setTimeout(() => setCameraStarted(true), 100);
       return;
     }
 
@@ -142,45 +141,12 @@ export default function ScanQR() {
       setLoading(true);
       console.log("🟡 Iniciando sincronización con la API...");
 
-      const eventId = eventoSeleccionado.event_id;
-      console.log("📌 ID del evento seleccionado:", eventId);
+      // Solo usa selectEvento, que ya sincroniza y setea asistentes
+      await selectEvento(eventoSeleccionado);
 
-      const res = await fetch(`/wordpress/wp-json/ticketflow/v1/sync-attendees/${eventId}`, {
-        method: "GET",
-      });
-
-      console.log("📡 Estado de la respuesta HTTP:", res.status, res.statusText);
-
-      if (!res.ok) {
-        throw new Error(`Error en la respuesta del servidor: ${res.statusText}`);
-      }
-
-      const data = await res.json();
-      console.log("📥 Datos recibidos desde sync-attendees:", data);
-
-      if (data.success) {
-        console.log("✅ Sincronización exitosa:", data.message);
-
-        // Verifica si los datos que vinieron tienen asistentes inesperados
-        if (Array.isArray(data.attendees)) {
-          console.log("🧾 Lista de asistentes sincronizados:", data.attendees);
-        }
-
-        // Refresca la data desde el backend (contexto)
-        await fetchEventos();
-
-        // Revisa si luego de fetchEventos() los asistentes están correctos
-        setTimeout(() => {
-          console.log("📊 Estado de asistentes tras fetchEventos:", asistentes);
-        }, 1000); // Delay para esperar que el contexto se actualice
-
-        setCameraStarted(true);
-      } else {
-        console.warn("⚠️ Fallo en sincronización:", data.message);
-        alert("Error al sincronizar: " + (data.message || "Respuesta inesperada."));
-      }
+      setCameraStarted(true);
     } catch (error) {
-      console.error("❌ Error al llamar al endpoint:", error);
+      console.error("❌ Error al sincronizar:", error);
       alert("No se pudo iniciar el escáner. Intenta de nuevo.");
     } finally {
       setLoading(false);
