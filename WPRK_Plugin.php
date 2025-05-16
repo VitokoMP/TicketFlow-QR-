@@ -24,7 +24,44 @@ register_activation_hook(__FILE__, function() {
 /**
  * Cargar el archivo de funciones de WordPress.
  */
+// Crear el rol personalizado "Escaneador" al activar el plugin
+register_activation_hook(__FILE__, 'wprk_add_custom_roles');
+function wprk_add_custom_roles() {
+    add_role('escaneador', 'Escaneador', [
+        'read' => true,
+        'manage_wprk_plugin' => true, // Capacidad personalizada para el plugin
+    ]);
+}
 
+// Limitar el menú de administración para el rol "escaneador"
+add_action('admin_menu', 'wprk_limit_admin_menu_for_scanner', 999);
+function wprk_limit_admin_menu_for_scanner() {
+    if (current_user_can('escaneador')) {
+        global $menu;
+
+        // Menús permitidos (el slug del plugin)
+        $allowed = ['toplevel_page_wprk-settings'];
+
+        foreach ($menu as $key => $menu_item) {
+            $menu_slug = $menu_item[2];
+            if (!in_array($menu_slug, $allowed)) {
+                remove_menu_page($menu_slug);
+            }
+        }
+    }
+}
+
+// Modificar el menú del plugin para usar la capacidad personalizada
+add_action('admin_menu', function () {
+    global $submenu;
+    if (isset($submenu['wprk-settings'])) {
+        foreach ($submenu['wprk-settings'] as $key => $item) {
+            if (!current_user_can('manage_wprk_plugin')) {
+                unset($submenu['wprk-settings'][$key]);
+            }
+        }
+    }
+}, 999);
 /**
  * Creamos jook.
  */
@@ -35,12 +72,6 @@ register_activation_hook(__FILE__, function() {
         'exportar_qr' => true,
         'cerrar_evento' => true
     ]);
-
-    add_role('ticketflow_escaner', 'Escaneador QR', [
-        'read' => true,
-        'escanear_qr' => true
-    ]);
-
     global $wpdb;
 
     
@@ -197,7 +228,7 @@ public function enqueue_scripts($hook) {
         ]);
 
         // Registrar la ruta para obtener asistentes por evento --ok
-        register_rest_route('ticketflow/v1', '/asistentes/(?P<event_id>\d+)', [
+        register_rest_route('ticketflow/v1', '/asistentes', [
             'methods' => 'GET',
             'callback' => [$this,'mep_get_asistentes_by_event_ids'],
             //'permission_callback' => function () {
@@ -236,7 +267,27 @@ public function enqueue_scripts($hook) {
 
 
     }
- 
+    
+//Obtengo los asistentes a evento segun seleccion 
+    public function mep_get_asistentes_by_event_ids(WP_REST_Request $request) { 
+        $event_ids = (array) $request->get_param('event_ids');
+
+        if (empty($event_ids)) {
+            return new WP_Error('invalid_param', 'Se requiere al menos un ID de evento.', ['status' => 400]);
+        }
+
+        $asistentes = $this->get_attendees_for_events($event_ids);
+
+        $agrupado = [];
+        foreach ($asistentes as $asistente) {
+            $id = $asistente['event_id'];
+            if (!isset($agrupado[$id])) $agrupado[$id] = [];
+            $agrupado[$id][] = $asistente;
+        }
+
+        return rest_ensure_response(['asistentes' => $agrupado]);
+    }
+    
 public function mark_as_scanned($request) {
     global $wpdb;
     $id = intval($request['id']);
@@ -683,78 +734,7 @@ function ticketflow_sync_and_get_attendees($request) {
         }
     }
         //tenemos que ver este modo
-    function mep_get_asistentes_by_event_ids(WP_REST_Request $request) { 
-        $event_ids = (array) $request->get_param('event_ids'); // Forzamos a array
 
-        if (empty($event_ids)) {
-            return new WP_Error('invalid_param', 'Se requiere al menos un ID de evento.', ['status' => 400]);
-        }
-
-        $asistentes = get_attendees_for_events($event_ids);
-        
-        // Agrupar por evento
-        $agrupado = [];
-        foreach ($asistentes as $asistente) {
-            $id = $asistente['event_id'];
-            if (!isset($agrupado[$id])) $agrupado[$id] = [];
-            $agrupado[$id][] = $asistente;
-        }
-
-        return rest_ensure_response(['asistentes' => $agrupado]);
-        //**
-        // function sync_attendees_to_scans_table($event_ids) {
-    //error_log('Entrando en la función sync_attendees_to_scans_table');
- //   global $wpdb;
-  //   
-   // if(!is_array($event_ids)) {
-    //    $event_ids = [$event_ids]; // Asegurarse de que sea un array
-   // }
-   // $totalInsertados = 0;
-    // Obtener asistentes de la base de datos
-    //  
-    // Filtrar y validar los IDs de evento
-   // $total_event_ids = count($event_ids);// Asegúrate de que $event_ids sea un array
-   // if ($total_event_ids === 0) {
-        //error_log("No se recibieron IDs de evento válidos.");
-   //     return new WP_Error('no_event_ids', 'No se proporcionaron IDs de evento válidos', ['status' => 400]);
-   // }
-    //foreach ($event_ids as $event_id) {
-     //   $event_id = intval($event_id);
-      //      if ($event_id <= 0) { //validamos que el id sea un entero <= 0 para evitar inyecciones sql
-       //        // error_log("ID de evento inválido: $event_id");
-        //        continue;
-       // }
-     // Verificar si el evento ya está sincronizado
- 
-  //  $result = $wpdb->query($wpdb->prepare("
-//        INSERT IGNORE INTO {$wpdb->prefix}ticketflow_scans (qr_code, event_id, scan_status, tipo)
-    // /   SELECT 
-     // /      a.post_name AS qr_code,
-       //     %d AS event_id,
-         //   'pending' AS scan_status,
-           // 'asistente' AS tipo
-      //  FROM {$wpdb->prefix}posts a
-     //   LEFT JOIN {$wpdb->prefix}postmeta ea ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
-      //  WHERE a.post_type = 'mep_events_attendees'
-      //      AND ea.meta_value = %d
-    ///", $event_id, $event_id));//INSERTANDO LOS ASISTENTES EN LA TABLA DE ESCANEOS
-
-//    if ($wpdb->last_error) {
- //       error_log("Error insertando asistentes para evento $event_id: " . $wpdb->last_error);
-  //  }
-   // if ($result !== false) {
-    //        $totalInsertados += $result;
-           // error_log("Insertados $result asistentes para evento $event_id");
-      //  } else {
-    //       // error_log("No se insertaron asistentes para evento $event_id");
-      //  }    
-   // }
-        //RESULTADO DE LA CONSULTA
-    //return $totalInsertados;
-
-//}
-        //  */
-    }
 
     //*function metodo para recibir muchos eventos y traer los asistentes.
     /**

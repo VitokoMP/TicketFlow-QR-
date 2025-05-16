@@ -44,10 +44,11 @@ export const EventoProvider = ({ children }) => {
   };
 //AQUI ESTAMOS TRAYENDO LOS ASISTENTES DESDE LA API 
 //CON LO QUE SE SINCRONIZAN LOS ASISTENTES POR EVENTO
-  const fetchAsistentes = async (event_id) => {
+  const fetchAsistentes = async (eventIds) => {
     setError(null);
     try {
-      const url = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/asistentes?event_ids[]=${event_id}`;
+      const queryString = eventIds.map((id) => `event_ids[]=${id}`).join("&");
+      const url = `${window.location.origin}/wordpress/wp-json/ticketflow/v1/asistentes?${queryString}`;
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -77,7 +78,7 @@ export const EventoProvider = ({ children }) => {
       await syncResponse.json();
 
       setAsistentes([]);
-      await fetchAsistentes(id);
+      await fetchAsistentes([id]); // Pasamos un array con el ID del evento
 
       setIsEventoDisponible(true);
     } catch (err) {
