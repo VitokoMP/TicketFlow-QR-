@@ -43,24 +43,26 @@ export default function ScanQR() {
     console.log("Estado de cameraStarted:", cameraStarted);
     if (!cameraStarted) return;
 
-    // Verificación defensiva del div 'reader'
-    if (!qrRef.current || qrRef.current.offsetWidth === 0 || qrRef.current.offsetHeight === 0) {
-      // Reintenta iniciar el escáner tras un pequeño delay si el div aún no está listo
-      setTimeout(() => setCameraStarted(true), 100);
-      return;
-    }
+    let isMounted = true;
+    let retryTimeout = null;
 
-    const qrCodeRegionId = "reader";
-    qrScanner.current = new Html5Qrcode(qrCodeRegionId);
-
-    console.log("🟡 Iniciando escáner QR...");
     const startScanner = async () => {
+      // Espera a que el div esté listo y tenga tamaño
+      if (!qrRef.current || qrRef.current.offsetWidth === 0 || qrRef.current.offsetHeight === 0) {
+        console.warn("El div #reader no está listo. Reintentando en 500ms...");
+        retryTimeout = setTimeout(startScanner, 500);
+        return;
+      }
+
+      const qrCodeRegionId = "reader";
+      qrScanner.current = new Html5Qrcode(qrCodeRegionId);
+
+      console.log("🟡 Iniciando escáner QR...");
       try {
         await qrScanner.current.start(
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 300, height: 300 } },
           (decodedText) => {
-            // Cooldown para evitar escaneos duplicados
             if (lastScannedRef.current === decodedText) return;
             lastScannedRef.current = decodedText;
             setScannedCode(decodedText);
@@ -77,9 +79,11 @@ export default function ScanQR() {
         );
         console.log("🟢 Cámara lista y escáner iniciado.");
       } catch (err) {
-        console.error("No se pudo iniciar la cámara:", err);
-        alert("No se pudo acceder a la cámara. Asegúrate de haber dado permisos.");
-        setCameraStarted(false);
+        if (isMounted) {
+          console.error("No se pudo iniciar la cámara:", err);
+          alert("No se pudo acceder a la cámara. Asegúrate de haber dado permisos.");
+          setCameraStarted(false);
+        }
       }
     };
 
@@ -87,6 +91,8 @@ export default function ScanQR() {
 
     // Limpieza robusta del escáner al desmontar o reiniciar
     return () => {
+      isMounted = false;
+      if (retryTimeout) clearTimeout(retryTimeout);
       if (qrScanner.current) {
         qrScanner.current.stop()
           .then(() => qrScanner.current.clear())
@@ -168,6 +174,7 @@ export default function ScanQR() {
 
   return (
     <div className="h-screen w-screen bg-black text-white flex flex-col items-center justify-center">
+  
       <h1 className="text-3xl text-yellow-400 font-bold mb-6">Ticket Flow</h1>
 
       <div className="mb-4">
@@ -212,8 +219,12 @@ export default function ScanQR() {
           >
             Iniciar Escáner
           </button>
-
-          <div id="reader" className="w-full max-w-md mt-6" ref={qrRef}></div>
+          <div
+            id="reader"
+            className="w-full max-w-md mt-6"
+            ref={qrRef}
+            style={{ minHeight: "300px", backgroundColor: "#000" }}
+          ></div>
           {validacion && (
             <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
               <div
