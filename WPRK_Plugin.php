@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.0.5
+ * Version: 1.0.7
  * Text-Domain: wp-react-ticketflow-qr 
  */
 //estare activando la ruta para app escaner!
@@ -32,6 +32,23 @@ function wprk_add_custom_roles() {
         'manage_wprk_plugin' => true, // Capacidad personalizada para el plugin
     ]);
 }
+//FORZANDO  HTTPS//
+add_action('admin_enqueue_scripts', function () {
+    $plugin_url = plugins_url('dist/bundle.js', __FILE__);
+
+    // Forzar HTTPS si es necesario (especialmente con ngrok)
+    if (strpos($plugin_url, 'http://') === 0 && is_ssl()) {
+        $plugin_url = str_replace('http://', 'https://', $plugin_url);
+    }
+
+    wp_enqueue_script(
+        'mi-plugin-bundle',
+        $plugin_url,
+        array(), // Dependencias (puedes añadir ['jquery'] si hace falta)
+        null,
+        true
+    );
+});
 
 // Limitar el menú de administración para el rol "escaneador"
 add_action('admin_menu', 'wprk_limit_admin_menu_for_scanner', 999);
@@ -781,5 +798,25 @@ function ticketflow_sync_and_get_attendees($request) {
 
      */
 }
+function qr_render_react_app() {
+    return '<div id="wprk-admin-app"></div>
+            <script src="' . plugin_dir_url(__FILE__) . 'dist/bundle.js"></script>';
+}
+add_shortcode('qr_react_app', 'qr_render_react_app');
+// Inicializar el plugin
 
+function qr_create_app_page() {
+    // Verifica si la página ya existe
+    $page = get_page_by_path('app');
+    if (!$page) {
+        // Crear la página
+        wp_insert_post(array(
+            'post_title'   => 'App',
+            'post_name'    => 'app',
+            'post_content' => '[qr_react_app]',
+            'post_status'  => 'publish',
+            'post_type'    => 'page',
+        ));
+    }
+}
 new WPRK_Plugin();

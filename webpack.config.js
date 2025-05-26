@@ -1,12 +1,15 @@
 const path = require('path');
 const TerserPlugin = require('terser-webpack-plugin');
 
+
 module.exports = {
   entry: './src/index.js',
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js', // Nombre del archivo generado
     clean: true,
+    publicPath: '/wp-content/plugins/Qr-Ticketflow-PWA/dist/', // Asegúrate de que este sea el path correcto para tu instalación de WordPress
+
   },
   optimization: {
     minimize: true,
