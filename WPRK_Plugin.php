@@ -380,6 +380,7 @@ public function get_scan_status_by_qr($event_id, $qr_code) {
 MAntenga el foco
 
 */ 
+
 public function mep_sincronizar_eventos_y_asistentes() {
 
    // error_log('Entrando en la función mep_sincronizar_eventos_y_asistentes');
@@ -457,6 +458,7 @@ public function mep_sincronizar_eventos_y_asistentes() {
     // Aqui estamos trabajando con los asistentes 
     //  */
     // Obtener asistentes de la base de datos 
+
         return new WP_REST_Response([
         'success' => true,
         'message' => 'Sincronización completa.'
@@ -470,7 +472,7 @@ public function mep_sincronizar_eventos_y_asistentes() {
          ]);
 
 
-}//
+}
 
 // Función para traer eventos de la base de datos y que sucede!?
 // esta necesita se llamada desde la funcion que si no encuentra el tramo principal de eventos insertados
@@ -491,6 +493,7 @@ public function mep_sincronizar_eventos_y_asistentes() {
 //***   █ ███ █ █ █ ███ █ █   █ █ ███ █ █ █ ███ █                                                            ***//
 //***   █ ▀▀▀ █ █ █ ▀▀▀ █ █   █ █ ▀▀▀ █ █ █ ▀▀▀ █                                                            ***//
 //---------------------------------------------------------------------------------------------------------------!
+
 public function mep_get_eventos_activos() {
     //error_log('Entrando en la función mep_get_eventos_activos');
     
@@ -524,6 +527,7 @@ public function mep_get_eventos_activos() {
 
     return new WP_REST_Response($resultados, 200);
 }
+
 //**
 // Aqui esta la funcion que desarralloste durante un mes.
 //  * Función para sincronizar asistentes a la tabla de escaneos
@@ -531,6 +535,7 @@ public function mep_get_eventos_activos() {
 //  * @param array $event_ids IDs de eventos a sincronizar
 //  * @return int Número de asistentes sincronizados
 //  */
+
 function sync_attendees_to_scans_table($event_ids) {
     global $wpdb;
 
@@ -573,7 +578,7 @@ function sync_attendees_to_scans_table($event_ids) {
 
 // Función para obtener asistentes de eventos específicos
 // Esta función obtiene los asistentes de eventos específicos
- public function get_attendees_for_events($event_ids) {
+public function get_attendees_for_events($event_ids) {
     global $wpdb;
 
     $event_ids = array_filter(array_map('intval', (array)$event_ids));
@@ -661,6 +666,7 @@ public function ejecutar_sincronizacion_con_boton() {
         // Asegúrate de cargar jQuery UI en el área de administración
         wp_enqueue_script('jquery-ui-sortable');  // jQuery UI ya está incluido en WordPress
     }
+    
 //**    
     /**
      * Función para sincronizar y obtener asistentes de un evento específico.
@@ -674,6 +680,7 @@ public function ejecutar_sincronizacion_con_boton() {
      * @param WP_REST_Request $request
      * @return WP_REST_Response
   */
+
 function ticketflow_sync_and_get_attendees($request) {
     $event_id = intval($request['event_id']);
 
@@ -694,8 +701,6 @@ function ticketflow_sync_and_get_attendees($request) {
         'attendees' => $attendees,
     ]);
 }
-
-
 
     function get_events_from_db(WP_REST_Request $request) {
         global $wpdb;
