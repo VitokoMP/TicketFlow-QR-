@@ -1,48 +1,92 @@
 
-# wp-react-Scaner-PDF
+# TicketFlow QR
 
-A React JS WordPress Plugin Starter
-**Diseñado con codigo libre**
-Licencia APACHE 2.0
-tengo el agrado de entregar esta version que contiene las mejores practicas de implementacion para Babel y webPack con REACT!
-version 1.1.5
-Necesitas instalar cross-env --save-dev
-# npm install at package.json
-{
-  "name": "wp-react-pdf-cotizacion",
-  "version": "1.1.5",
-  "main": "index.js",
-  "dependencies": {
-    "axios": "^1.7.7",
-    "file-saver": "^2.0.5",
-    "pdf-lib": "^1.17.1",
-    "php-serialize": "^5.0.1",
-    "php-unserialize": "^0.0.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-modal": "^3.16.1",
-    "react-router-dom": "^6.26.1"
-  },
-  "devDependencies": {
-    "@babel/core": "^7.25.2",
-    "@babel/preset-env": "^7.25.4",
-    "@babel/preset-react": "^7.24.7",
-    "babel-loader": "^9.1.3",
-    "cross-env": "^7.0.3",
-    "css-loader": "^7.1.2",
-    "style-loader": "^4.0.0",
-    "terser-webpack-plugin": "^5.3.10",
-    "webpack": "^5.94.0",
-    "webpack-cli": "^5.1.4"
-  },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "cross-env NODE_ENV=production webpack",
-    "start": "cross-env NODE_ENV=development webpack --watch"
-  }
-}
+Un plugin para WordPress que permite la validación de entradas mediante códigos QR, sincronización de eventos y asistentes, y una interfaz moderna construida con React.
 
+---
 
+## 🚀 Características principales
 
-**Optimizado por AlekhArt.codes**
-> Written with [StackEdit](https://stackedit.io/).
+- Escaneo de entradas mediante QR
+- Panel de administración en React
+- Roles personalizados: Productor de Eventos, Escaneador
+- Gestión y sincronización de eventos y asistentes
+- Registro de escaneos en base de datos personalizada
+- API REST integrada para consumo móvil y frontend React
+- Estilos modernos y estructura modular
+
+---
+
+## 🛠 Requisitos
+
+- WordPress 5.0 o superior
+- PHP 7.4+
+- Node.js y npm (solo para desarrollo React)
+- Plugin debe estar activo
+
+---
+
+## 📦 Instalación y uso
+
+1. Cloná el repositorio o copiá la carpeta `ticketflow-qr` al directorio `wp-content/plugins/`.
+2. Activá el plugin desde el panel de WordPress.
+3. Ejecutá en consola (solo para desarrollo del frontend):
+
+```bash
+npm install
+npm start
+```
+
+4. Para crear el build de producción:
+
+```bash
+npm run build
+```
+
+5. El panel de React está disponible en el menú lateral de WordPress bajo **"TicketFlow"**.
+
+---
+
+## 🔐 Roles personalizados
+
+- `ticketflow_productor`:
+  - Puede exportar QR y cerrar eventos
+- `escaneador`:
+  - Puede acceder solo al panel del escáner
+
+---
+
+## 📡 Rutas REST disponibles
+
+- `POST /ticketflow/v1/mep_sincronizar_eventos_y_asistentes`
+- `GET  /ticketflow/v1/eventos-activos`
+- `GET  /ticketflow/v1/events`
+- `GET  /ticketflow/v1/asistentes`
+- `GET  /ticketflow/v1/sync-attendees/{event_id}`
+- `GET  /ticketflow/v1/escanear/{event_id}/{qr_code}`
+- `POST /ticketflow/v1/mark-as-scanned/{id}`
+
+---
+
+## 🧪 Tecnologías utilizadas
+
+- **React 18**
+- **Webpack 5**
+- **Axios** para HTTP
+- **pdf-lib** para generación de PDFs
+- **file-saver** para descargas
+- **php-serialize** y **php-unserialize** para compatibilidad
+- **REST API de WordPress**
+- **jQuery UI Sortable** para ordenamiento dinámico
+
+---
+
+## 📃 Licencia
+
+Este proyecto se distribuye bajo la licencia **Apache 2.0**.  
+Autor: AlekhArt.codes  
+GitHub: [@VitokoMp](https://github.com/VitokoMp)
+
+---
+
+**Optimizado por AlekhArt.codes — Tecnología abierta para eventos eficientes.**
