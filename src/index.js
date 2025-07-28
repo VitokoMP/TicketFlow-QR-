@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (element) {
         // Aplicar estilos directamente desde JS como respaldo
         element.style.width = '100%';
-        element.style.height = '100vh';
+        element.style.minHeight = '600px';
         element.style.display = 'flex';
         element.style.flexDirection = 'column';
 
