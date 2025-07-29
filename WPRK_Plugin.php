@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.1.0
+ * Version: 1.1.1
  * License: GPL2
  * Text-Domain: wp-react-ticketflow-qr 
  */
@@ -179,7 +179,7 @@ class WPRK_Plugin {
                 background-color: rgb(52, 54, 49); 
                 box-shadow: rgba(0, 0, 0, 0.1) 0px 0px 10px; 
                 width: 100%; 
-                height: 100vh; 
+                height: 100%; 
                 display: flex; 
                 flex-direction: column;
             "></div>
@@ -231,12 +231,12 @@ public function enqueue_scripts($hook) {
             return current_user_can('escanear_qr') || current_user_can('exportar_qr');},
         ]);
 
-        // Registrar la ruta para obtener asistentes por evento--ok
         register_rest_route('ticketflow/v1', '/sync-attendees/(?P<event_id>\d+)', [
-            'methods' => 'GET',
-            'callback' => [$this,'ticketflow_sync_and_get_attendees'],
-            'permission_callback' => '__return_true',
+        'methods' => 'GET',
+        'callback' => [$this, 'ticketflow_sync_and_get_attendees'],
+        'permission_callback' => '__return_true',
         ]);
+
 
         // Registrar la ruta para obtener asistentes por evento --ok
         register_rest_route('ticketflow/v1', '/asistentes', [
@@ -626,24 +626,34 @@ public function get_attendees_for_events($event_ids) {
  */
 
 public function mep_get_asistentes_by_event_id($request) {
-    $event_id = intval($request['event_id']);
+    $event_id = intval($request->get_param('event_id'));
 
     if (!$event_id || $event_id <= 0) {
         return new WP_Error('invalid_event_id', 'ID de evento inválido.', ['status' => 400]);
     }
 
-    $asistentes = $this->get_attendees_for_events([$event_id]); // Asegúrate de usar la función correcta
+    $asistentes = $this->get_attendees_for_events([$event_id]);
 
     if (is_wp_error($asistentes)) {
-        return $asistentes; // Retorna el error directamente si ocurre
+        return $asistentes;
+    }
+
+    if (empty($asistentes)) {
+        return rest_ensure_response([
+            'message' => 'No hay asistentes que sincronizar.',
+            'success' => true,
+            'attendees' => [],
+            'event_id' => $event_id,
+        ]);
     }
 
     return rest_ensure_response([
         'success' => true,
         'event_id' => $event_id,
-        'asistentes' => $asistentes,
+        'attendees' => $asistentes,
     ]);
 }
+
 
     /**
      * Función para ejecutar la sincronización de eventos y asistentes al hacer clic en el botón.
@@ -693,18 +703,26 @@ public function ejecutar_sincronizacion_con_boton() {
      * @return WP_REST_Response
   */
 
-function ticketflow_sync_and_get_attendees($request) {
-    $event_id = intval($request['event_id']);
+public function ticketflow_sync_and_get_attendees($request) {
+    $event_id = 0;
+
+    if (is_object($request) && method_exists($request, 'get_param')) {
+        $event_id = intval($request->get_param('event_id'));
+    } elseif (is_array($request) && isset($request['event_id'])) {
+        $event_id = intval($request['event_id']);
+    }
 
     if ($event_id <= 0) {
         return new WP_Error('invalid_event_id', 'ID de evento no válido', ['status' => 400]);
     }
 
-    // Sincronizar asistentes y obtener lista
-    $inserted  = $this->sync_attendees_to_scans_table([$event_id]); // Asegúrate de pasar array
-    $attendees = $this->get_attendees_for_events($event_id);
-    $mep_get_asistentes_by_event_ids = $this->mep_get_asistentes_by_event_id($event_id);
+    // Sincronizar asistentes (recibe array)
+    $inserted = $this->sync_attendees_to_scans_table([$event_id]);
 
+    // Obtener asistentes para ese evento, aquí sí con array
+    $attendees = $this->get_attendees_for_events([$event_id]);
+
+    // Retornar respuesta REST
     return rest_ensure_response([
         'success' => true,
         'event_id' => $event_id,
