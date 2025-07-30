@@ -57,53 +57,62 @@ export const EventoProvider = ({ children }) => {
     }
   };
 
-  const fetchAsistentes = async (eventIds) => {
-    setError(null);
-    try {
-      const queryString = eventIds.map((id) => `event_ids[]=${id}`).join("&");
-      const url = `${window.location.origin}/wp-json/ticketflow/v1/asistentes?${queryString}`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      if (!response.ok)
-        throw new Error(`Error al obtener los asistentes: ${response.statusText}`);
-      const data = await response.json();
-      if (data && data.asistentes) {
-        setAsistentes(data.asistentes);
-      }
-    } catch (err) {
-      setError(err.message);
-    }
-  };
+const fetchAsistentes = async (eventIds = []) => {
+  if (eventIds.length === 0) return {};
 
-  const selectEvento = async (evento) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const id = evento.event_id;
-      setEventId(id);
-      setEventoSeleccionado(evento);
+  const queryString = eventIds.map(id => `event_ids[]=${id}`).join('&');
 
-      const syncUrl = `${window.location.origin}/wp-json/ticketflow/v1/sync-attendees/${id}`;
-      const syncResponse = await fetch(syncUrl);
-      if (!syncResponse.ok) throw new Error("Error al sincronizar asistentes");
-      await syncResponse.json();
+  try {
+    const res = await fetch(`${window.location.origin}/wp-json/ticketflow/v1/asistentes?${queryString}`);
+    if (!res.ok) throw new Error('Error al obtener asistentes');
 
-      setAsistentes({}); // limpiar antes de cargar
-      await fetchAsistentes([id]);
-      console.log("Asistentes cargados:", asistentes);
+    const data = await res.json();
+    return data.asistentes || {};
+  } catch (err) {
+    console.error('❌ fetchAsistentes error:', err);
+    return {};
+  }
+};
 
-      setIsEventoDisponible(true);
-    } catch (err) {
-      setError(err.message);
-      setIsEventoDisponible(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+const selectEvento = async (evento) => {
+  setLoading(true);
+  setError(null);
+
+  try {
+    const id = evento.event_id;
+    setEventId(id);
+    setEventoSeleccionado(evento);
+    console.log("Evento seleccionado cambiado a:", evento);
+
+    const syncUrl = `${window.location.origin}/wp-json/ticketflow/v1/sync-attendees/${id}`;
+    const syncResponse = await fetch(syncUrl);
+    if (!syncResponse.ok) throw new Error("Error al sincronizar asistentes");
+    await syncResponse.json();
+
+    // Limpia solo el evento actual
+    setAsistentes(prev => ({
+      ...prev,
+      [id]: []
+    }));
+
+    // Cargar asistentes por ID
+    const asistentesCargados = await fetchAsistentes([id]);
+    console.log("Asistentes cargados en selectEvento:", asistentesCargados);
+
+    setAsistentes(prev => ({
+      ...prev,
+      ...asistentesCargados
+    }));
+
+    setIsEventoDisponible(true);
+  } catch (err) {
+    setError(err.message);
+    setIsEventoDisponible(false);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchEventos();
