@@ -5,6 +5,7 @@ import checkImg from '../public/img/check.png';
 import crossImg from '../public/img/cross.png';
 import { useMemo } from "react";
 
+
 export default function ScanQR() {
   const {
     eventos = [],
@@ -23,6 +24,8 @@ export default function ScanQR() {
   const qrRef = useRef(null);
   const qrScanner = useRef(null);
   const lastScannedRef = useRef("");
+  const [validationResult, setValidationResult] = useState(null); // 'success' | 'error' | null
+
   //const asistentesEvento = asistentes?.[String(eventoSeleccionado?.event_id)] || [];
 
 const asistentesEvento = useMemo(() => {
@@ -154,50 +157,52 @@ const startScanner = async () => {
   }
 };
 
+const validarYMarcarAsistente = async (eventId, qrCode) => {
+  try {
+    // 1. Verificar si ya fue escaneado
+    const estadoRes = await fetch(`/wp-json/ticketflow/v1/escanear/${eventId}/${qrCode}`);
+    const estadoData = await estadoRes.json();
 
-const handleScanSuccess = (decodedText) => {
-  if (!eventoSeleccionado || asistentesEvento.length === 0) return;
+    console.log("🔍 Estado del QR:", estadoData);
 
-  const charCodes = (str) => [...str].map(c => c.charCodeAt(0));
-  console.log("📦 Código escaneado:", decodedText);
-  // Extraer solo el último segmento del QR (después de la última '/')
-  const segments = decodedText.trim().split('/').filter(Boolean);
+    if (!estadoData.success) {
+      return { status: "fail", mensaje: "Código inválido o no registrado" };
+    }
+
+    if (estadoData.scanned === true) {
+      return { status: "ya-validado", asistente: estadoData.asistente };
+    }
+
+    // 2. Si no fue escaneado, marcar como escaneado
+    const markRes = await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${estadoData.asistente.id}`, {
+      method: "POST",
+    });
+
+    const markData = await markRes.json();
+    console.log("✅ Marcado como escaneado:", markData);
+
+    return { status: "ok", asistente: estadoData.asistente };
+  } catch (error) {
+    console.error("❌ Error al validar y marcar:", error);
+    return { status: "fail", mensaje: "Error de conexión al validar QR" };
+  }
+};
+
+
+const handleScanSuccess = async (decodedText) => {
+  if (!eventoSeleccionado) return;
+
+  const segments = decodedText.trim().split("/").filter(Boolean);
   const scannedCode = segments[segments.length - 1].toLowerCase();
 
   if (scannedCode === lastScannedRef.current) return;
   lastScannedRef.current = scannedCode;
 
-    // Debugging opcional
-    console.log("📦 Código escaneado (extraído):", scannedCode);
-    console.log("🧾 Lista de códigos QR en asistentesEvento:", asistentesEvento.map(a => a.qr_code));
-    console.log("Código escaneado (limpio):", scannedCode);
-    console.log("Código escaneado (chars):", charCodes(scannedCode));
-    asistentesEvento.forEach((a, i) => {
-    console.log(`Asistente #${i} (chars):`, charCodes((a.qr_code ?? "").trim().toLowerCase()));
-  });
-    asistentesEvento.forEach((a, i) => {
-    console.log(`Asistente #${i} -> qr_code: '${a.qr_code}', tipo: ${typeof a.qr_code}`);
-  });
-
-    // Buscar coincidencia en asistentesEvento
-    const match = asistentesEvento.find(
-    (a) => (a.qr_code ?? "").trim().toLowerCase() === scannedCode
-  );
-
-  if (!match) {
-    console.warn("No se encontró código QR válido para:", scannedCode);
-    console.warn("Códigos asistentes disponibles:", asistentesEvento.map(a => (a.qr_code ?? "").trim().toLowerCase()));
-  }
-
-
   qrScanner.current?.pause();
 
-  if (match) {
-    setValidacion({ status: "ok", asistente: match });
-  } else {
-    setValidacion({ status: "fail", mensaje: "Código inválido" });
-  }
+  const resultado = await validarYMarcarAsistente(eventoSeleccionado.event_id, scannedCode);
 
+  setValidacion(resultado);
   setShowOverlay(true);
 
   setTimeout(() => {
@@ -207,6 +212,8 @@ const handleScanSuccess = (decodedText) => {
     qrScanner.current?.resume();
   }, 3000);
 };
+
+
 
   console.log("Evento seleccionado:", eventoSeleccionado);
   console.log("Asistentes del evento:", asistentesEvento);
@@ -261,16 +268,39 @@ const handleScanSuccess = (decodedText) => {
           style={{ maxWidth: "400px", margin: "0 auto" }}
         />
       )}
+<div className="relative mt-6 w-full" style={{ maxWidth: "400px", margin: "0 auto" }}>
+  <div id="reader" ref={qrRef} className="w-full h-[320px] sm:h-[400px]" />
 
-      {showOverlay && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50">
-          <img
-            src={validacion?.status === "ok" ? checkImg : crossImg}
-            alt={validacion?.status === "ok" ? "Validado" : "Inválido"}
-            className="w-32 h-32 md:w-48 md:h-48 animate-pulse"
-          />
-        </div>
-      )}
+{showOverlay && (
+  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-60 z-40">
+    <img
+      src={
+        validacion?.status === "ok"
+          ? checkImg
+          : validacion?.status === "ya-validado"
+          ? crossImg
+          : crossImg
+      }
+      alt={validacion?.status === "ok" ? "Validado" : "Inválido"}
+      className="w-32 h-32 md:w-48 md:h-48 animate-pulse"
+    />
+    {validacion?.status === "ya-validado" && (
+      <p className="text-red-500 font-bold mt-4 text-lg">Ya fue validado</p>
+    )}
+    {validacion?.status === "fail" && (
+      <p className="text-red-500 font-bold mt-4 text-lg">
+        Código inválido
+      </p>
+    )}
+    {validacion?.status === "ok" && (
+      <p className="text-green-400 font-bold mt-4 text-lg">
+        Asistente validado
+      </p>
+    )}
+  </div>
+)}
+
+</div>      
 
       {validacion?.status === "ok" && (
         <div className="mt-4 p-4 rounded bg-white shadow text-black text-center">
