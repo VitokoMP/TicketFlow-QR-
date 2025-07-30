@@ -6,6 +6,7 @@ import crossImg from '../public/img/cross.png';
 import { useMemo } from "react";
 
 
+
 export default function ScanQR() {
   const {
     eventos = [],
@@ -269,7 +270,8 @@ const handleScanSuccess = async (decodedText) => {
         />
       )}
 <div className="relative mt-6 w-full" style={{ maxWidth: "400px", margin: "0 auto" }}>
-  
+  <div id="reader" ref={qrRef} className="w-full h-[320px] sm:h-[400px]" />
+
 {showOverlay && (
   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-60 z-40">
     <img
