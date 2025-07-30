@@ -94,6 +94,7 @@ export const EventoProvider = ({ children }) => {
 
       setAsistentes({}); // limpiar antes de cargar
       await fetchAsistentes([id]);
+      console.log("Asistentes cargados:", asistentes);
 
       setIsEventoDisponible(true);
     } catch (err) {

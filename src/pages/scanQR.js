@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { useEvento } from "../context/EventoContext";
+import checkImg from '../public/img/check.png';
+import crossImg from '../public/img/cross.png';
 
 export default function ScanQR() {
   const {
@@ -29,6 +31,7 @@ export default function ScanQR() {
 
 
   useEffect(() => {
+    console.log("Asistentes actualizados para evento:", eventoSeleccionado?.event_id, asistentesEvento);
     if (asistentesEvento.length > 0 && !cameraStarted) {
       startScanner();
     }
@@ -121,6 +124,9 @@ export default function ScanQR() {
     }, 3000);
   };
 
+  console.log("Evento seleccionado:", eventoSeleccionado);
+  console.log("Asistentes del evento:", asistentesEvento);
+
   return (
     <div className="px-4 py-2 max-w-md mx-auto">
       <h2 className="text-xl font-bold text-center">Escáner QR TicketFlow</h2>
@@ -134,6 +140,8 @@ export default function ScanQR() {
     setShowOverlay(false);
     selectEvento(selected);
     setCameraStarted(false);
+    console.log("Evento seleccionado desde select:", selected);
+
   }
 }}
   className="border p-2 mt-4 w-full rounded"
@@ -158,7 +166,7 @@ export default function ScanQR() {
       {showOverlay && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50">
           <img
-            src={validacion?.status === "ok" ? "public/img/check.png" : "public/img/cross.png"}
+            src={validacion?.status === "ok" ? checkImg : crossImg}
             alt={validacion?.status === "ok" ? "Validado" : "Inválido"}
             className="w-32 h-32 md:w-48 md:h-48 animate-pulse"
           />
