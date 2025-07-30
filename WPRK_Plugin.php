@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.1.1
+ * Version: 1.1.2
  * License: GPL2
  * Text-Domain: wp-react-ticketflow-qr 
  */
@@ -470,18 +470,16 @@ public function mep_sincronizar_eventos_y_asistentes() {
     //  */
     // Obtener asistentes de la base de datos 
 
-        return new WP_REST_Response([
-        'success' => true,
-        'message' => 'Sincronización completa.'
-    ], 200);// 200 OK
-    
-    $resultado = $this.ticketflow_sync_and_get_attendees($event_id);
-       
-        return rest_ensure_response([
-            'event_id' => $event_id,
-            'resultado' => $resultado,
-         ]);
 
+  // Ahora sincroniza asistentes para todos los eventos
+    $total_asistentes = $this->sync_attendees_to_scans_table($event_ids);
+
+    return new WP_REST_Response([
+        'success' => true,
+        'message' => 'Sincronización completa.',
+        'eventos_insertados' => $eventos_insertados,
+        'total_asistentes' => $total_asistentes
+    ], 200);
 
 }
 
@@ -601,7 +599,7 @@ public function get_attendees_for_events($event_ids) {
     $placeholders = implode(',', array_fill(0, count($event_ids), '%d'));
     $sql = "
         SELECT * FROM {$wpdb->prefix}ticketflow_scans
-        WHERE event_id IN ($placeholders)
+        WHERE event_id IN ($placeholders) AND tipo = 'asistente'
     ";
 
     $prepared = $wpdb->prepare($sql, ...$event_ids);

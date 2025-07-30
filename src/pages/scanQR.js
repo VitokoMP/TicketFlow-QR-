@@ -4,203 +4,179 @@ import { useEvento } from "../context/EventoContext";
 
 export default function ScanQR() {
   const {
-    asistentes = [],
-    scannedCode,
-    setScannedCode,
+    eventos = [],
+    asistentes = {},
+    setAsistentes,
     fetchEventos,
-    eventos,
+    eventoSeleccionado,
+    setEventoSeleccionado,
     setLoading,
-    loading: loadingContext,
-    error: errorContext,
+    selectEvento, // <-- agrega esto
   } = useEvento();
 
-  const eventosSafe = Array.isArray(eventos) ? eventos : [];
   const [cameraStarted, setCameraStarted] = useState(false);
   const [validacion, setValidacion] = useState(null);
-  const [eventoSeleccionado, setEventoSeleccionado] = useState(null);
+  const [showOverlay, setShowOverlay] = useState(false);
   const qrRef = useRef(null);
   const qrScanner = useRef(null);
   const lastScannedRef = useRef("");
 
+  const asistentesEvento = asistentes?.[String(eventoSeleccionado?.event_id)] || [];
+
   useEffect(() => {
-    if (eventosSafe.length > 0 && !eventoSeleccionado && eventosSafe[0]?.event_id) {
-      setEventoSeleccionado(eventosSafe[0]);
+    fetchEventos();
+  }, []);
+
+
+  useEffect(() => {
+    if (asistentesEvento.length > 0 && !cameraStarted) {
+      startScanner();
     }
-  }, [eventosSafe]);
-
-  useEffect(() => {
-    if (eventoSeleccionado) {
-      setCameraStarted(false);
-      setValidacion(null);
+    // Limpia el escáner si no hay asistentes
+  if (asistentesEvento.length === 0 && cameraStarted) {
+    if (qrScanner.current && qrScanner.current._isScanning) {
+      qrScanner.current.stop().catch(() => {});
     }
-  }, [eventoSeleccionado]);
+    setCameraStarted(false);
+  }
+  }, [asistentesEvento]);
 
   useEffect(() => {
-    if (!cameraStarted || !qrRef.current || qrRef.current.offsetWidth === 0) return;
-
-    const qrCodeRegionId = "reader";
-    qrScanner.current = new Html5Qrcode(qrCodeRegionId);
-
-    const startScanner = async () => {
-      try {
-        await qrScanner.current.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 300, height: 300 } },
-          (decodedText) => {
-            if (lastScannedRef.current === decodedText) return;
-            lastScannedRef.current = decodedText;
-            setScannedCode(decodedText);
-            validarCodigo(decodedText);
-            setTimeout(() => (lastScannedRef.current = ""), 2000);
-          },
-          (errorMessage) => {
-            console.warn("Error escaneando QR:", errorMessage);
-          }
-        );
-        console.log("🟢 Cámara lista.");
-      } catch (err) {
-        console.error("❌ Error al iniciar escáner:", err);
-        alert("No se pudo acceder a la cámara.");
-        setCameraStarted(false);
-      }
-    };
-
-    startScanner();
-
     return () => {
-      if (qrScanner.current) {
-        qrScanner.current
-          .stop()
-          .then(() => console.log("🔴 Escáner detenido"))
-          .catch((err) => console.warn("⚠️ Error al detener escáner:", err));
+      if (qrScanner.current && qrScanner.current._isScanning) {
+        qrScanner.current.stop().catch(() => {});
       }
     };
-  }, [cameraStarted]);
-
-  const validarCodigo = async (codigo) => {
-    if (!codigo || !eventoSeleccionado?.event_id) {
-      setValidacion("ERROR");
-      return;
-    }
-
+  }, []);
+/*  // Función para sincronizar asistentes desde el servidor
+  const handleSync = async (eventId) => {
+    setLoading(true);
     try {
-      const res = await fetch(
-        `/wp-json/ticketflow/v1/escanear/${eventoSeleccionado.event_id}/${codigo}`
-      );
-      if (!res.ok) throw new Error("QR no válido");
+      const response = await fetch(`/wp-json/ticketflow/v1/sync-attendees/${eventId}`);
+      const data = await response.json();
 
-      const data = await res.json();
-      if (data.scan_status === "pending") {
-        await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${data.id}`, {
-          method: "POST",
-        });
-        setValidacion("OK");
-      } else if (data.scan_status === "scanned") {
-        setValidacion("YA_VALIDADO");
+      if (data.success && Array.isArray(data.attendees)) {
+        setAsistentes((prev) => ({
+          ...prev,
+          [String(eventId)]: data.attendees,
+        }));
+        console.log("✅ Asistentes sincronizados:", data.attendees);
       } else {
-        setValidacion("ERROR");
+        console.error("❌ Error al obtener asistentes:", data);
       }
     } catch (error) {
-      console.error("Error en validación:", error);
-      setValidacion("ERROR");
+      console.error("❌ Error al sincronizar:", error);
+    }
+    setLoading(false);
+  };*/
+
+  const startScanner = async () => {
+    if (!qrRef.current) return;
+    try {
+      const scanner = new Html5Qrcode(qrRef.current.id);
+      qrScanner.current = scanner;
+
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        handleScanSuccess
+      );
+
+      setCameraStarted(true);
+      console.log("🟢 Cámara iniciada.");
+    } catch (err) {
+      setValidacion({
+        status: "fail",
+        mensaje: "No se pudo iniciar la cámara. Usa un navegador compatible y otorga permisos.",
+      });
+      console.error("❌ Error al iniciar cámara:", err);
     }
   };
 
-  const handleStartScanner = async () => {
-    if (loadingContext || !eventoSeleccionado?.event_id) {
-      alert("Selecciona un evento válido.");
-      return;
+  const handleScanSuccess = (decodedText) => {
+    if (!eventoSeleccionado || asistentesEvento.length === 0) return;
+    if (decodedText === lastScannedRef.current) return;
+
+    lastScannedRef.current = decodedText;
+    const match = asistentesEvento.find((a) => decodedText.includes(a.qr_code));
+
+    // Pausar el escáner para evitar múltiples lecturas
+    qrScanner.current?.pause();
+
+    if (match) {
+      setValidacion({ status: "ok", asistente: match });
+    } else {
+      setValidacion({ status: "fail", mensaje: "Código inválido" });
     }
 
-    try {
-      setLoading(true);
-      const res = await fetch(
-        `/wp-json/ticketflow/v1/sync-attendees/${eventoSeleccionado.event_id}`
-      );
-      if (!res.ok) throw new Error("Sincronización fallida");
+    setShowOverlay(true);
 
-      const data = await res.json();
-      if (data.success) {
-        console.log("✅ Sincronización:", data.message);
-        await fetchEventos();
-        setCameraStarted(true);
-      } else {
-        alert("Error al sincronizar: " + (data.message || "Desconocido"));
-      }
-    } catch (err) {
-      console.error("❌ Error de sincronización:", err);
-      alert("Error al sincronizar evento.");
-    } finally {
-      setLoading(false);
-    }
+    setTimeout(() => {
+      setShowOverlay(false);
+      setValidacion(null);
+      lastScannedRef.current = "";
+
+      // Reanudar escáner
+      qrScanner.current?.resume();
+    }, 3000);
   };
 
   return (
-    <div className="h-screen w-screen bg-black text-white flex flex-col items-center justify-center">
-      <h1 className="text-3xl text-yellow-400 font-bold mb-6">Ticket Flow</h1>
+    <div className="px-4 py-2 max-w-md mx-auto">
+      <h2 className="text-xl font-bold text-center">Escáner QR TicketFlow</h2>
 
-      <div className="mb-4">
-        <label htmlFor="evento">Selecciona un evento:</label>
-        <select
-          id="evento"
-          className="px-4 py-2 rounded-lg text-black"
-          value={eventoSeleccionado?.event_id || ""}
-          onChange={(e) =>
-            setEventoSeleccionado(
-              eventosSafe.find((evento) => evento.event_id === parseInt(e.target.value))
-            )
-          }
-        >
-          <option value="" disabled>
-            -- Selecciona un evento --
-          </option>
-          {eventosSafe.map((evento) => (
-            <option key={evento.event_id} value={evento.event_id}>
-              {evento.event_title}
-            </option>
-          ))}
-        </select>
-      </div>
+      <select
+  value={eventoSeleccionado?.event_id || ""}
+  onChange={(e) => {
+  const selected = eventos.find(ev => ev.event_id === Number(e.target.value));
+  if (selected) {
+    setValidacion(null);
+    setShowOverlay(false);
+    selectEvento(selected);
+    setCameraStarted(false);
+  }
+}}
+  className="border p-2 mt-4 w-full rounded"
+>
+  <option value="">Selecciona un evento</option>
+  {eventos.map(ev => (
+    <option key={ev.event_id} value={ev.event_id}>
+      {ev.event_title}
+    </option>
+  ))}
+</select>
 
-      {loadingContext ? (
-        <button className="px-6 py-3 bg-yellow-400 text-black rounded-lg" disabled>
-          Sincronizando...
-        </button>
-      ) : (
-        <>
-          <button
-            onClick={handleStartScanner}
-            className="px-6 py-3 bg-yellow-400 text-black rounded-lg"
-            disabled={!eventoSeleccionado}
-          >
-            Iniciar Escáner
-          </button>
-
-          <div id="reader" className="w-full max-w-md mt-6" ref={qrRef}></div>
-
-          {validacion && (
-            <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
-              <div
-                className={`text-6xl font-bold px-8 py-6 rounded-2xl shadow-2xl transition-all duration-500 ${
-                  validacion === "OK"
-                    ? "bg-green-400 text-black"
-                    : validacion === "YA_VALIDADO"
-                    ? "bg-orange-400 text-black"
-                    : "bg-red-500 text-white"
-                }`}
-              >
-                {validacion === "OK"
-                  ? "✅ CÓDIGO VÁLIDO"
-                  : validacion === "YA_VALIDADO"
-                  ? "⚠️ YA ESCANEADO"
-                  : "❌ CÓDIGO NO VÁLIDO"}
-              </div>
-            </div>
-          )}
-        </>
+      {eventoSeleccionado && (
+        <div
+          id="reader"
+          ref={qrRef}
+          className="mt-6 w-full"
+          style={{ maxWidth: "400px", margin: "0 auto" }}
+        />
       )}
 
-      {errorContext && <div className="text-red-500 mt-4">Error: {errorContext}</div>}
+      {showOverlay && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50">
+          <img
+            src={validacion?.status === "ok" ? "public/img/check.png" : "public/img/cross.png"}
+            alt={validacion?.status === "ok" ? "Validado" : "Inválido"}
+            className="w-32 h-32 md:w-48 md:h-48 animate-pulse"
+          />
+        </div>
+      )}
+
+      {validacion?.status === "ok" && (
+        <div className="mt-4 p-4 rounded bg-white shadow text-black text-center">
+          <strong>Nombre:</strong>{" "}
+          {validacion.asistente?.nombre ||
+            validacion.asistente?.name ||
+            validacion.asistente?.nombre_completo ||
+            "Desconocido"}
+          <pre className="text-xs bg-gray-100 text-left p-2 mt-2 rounded overflow-x-auto">
+            {JSON.stringify(validacion.asistente, null, 2)}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }

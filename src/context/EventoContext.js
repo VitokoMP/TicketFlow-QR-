@@ -13,7 +13,7 @@ export function useEvento() {
 export const EventoProvider = ({ children }) => {
   const [eventos, setEventos] = useState([]);
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null);
-  const [asistentes, setAsistentes] = useState([]);
+  const [asistentes, setAsistentes] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isEventoDisponible, setIsEventoDisponible] = useState(false);
@@ -40,12 +40,12 @@ export const EventoProvider = ({ children }) => {
 
       if (eventosMapeados.length > 0) {
         // Ordenamos eventos por fecha ascendente para seleccionar el próximo
-        eventosMapeados.sort(
-          (a, b) => new Date(a.event_start_date) - new Date(b.event_start_date)
-        );
+        //eventosMapeados.sort(
+        //  (a, b) => new Date(a.event_start_date) - new Date(b.event_start_date)
+        //);
 
         // Seleccionamos automáticamente el primer evento
-        selectEvento(eventosMapeados[0]);
+        //selectEvento(eventosMapeados[0]);
       } else {
         setIsEventoDisponible(false);
         setEventoSeleccionado(null);
@@ -92,7 +92,7 @@ export const EventoProvider = ({ children }) => {
       if (!syncResponse.ok) throw new Error("Error al sincronizar asistentes");
       await syncResponse.json();
 
-      setAsistentes([]); // limpiar antes de cargar
+      setAsistentes({}); // limpiar antes de cargar
       await fetchAsistentes([id]);
 
       setIsEventoDisponible(true);
@@ -114,6 +114,7 @@ export const EventoProvider = ({ children }) => {
         eventos,
         fetchEventos,
         asistentes,
+        setAsistentes,
         loading,
         error,
         isEventoDisponible,
@@ -122,6 +123,7 @@ export const EventoProvider = ({ children }) => {
         eventoSeleccionado,
         setEventoSeleccionado,
         setLoading,
+        fetchAsistentes,
       }}
     >
       {children}
