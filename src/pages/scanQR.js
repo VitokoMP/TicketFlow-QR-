@@ -158,20 +158,37 @@ const startScanner = async () => {
 const handleScanSuccess = (decodedText) => {
   if (!eventoSeleccionado || asistentesEvento.length === 0) return;
 
+  const charCodes = (str) => [...str].map(c => c.charCodeAt(0));
+  console.log("📦 Código escaneado:", decodedText);
   // Extraer solo el último segmento del QR (después de la última '/')
-  const segments = decodedText.trim().split('/');
+  const segments = decodedText.trim().split('/').filter(Boolean);
   const scannedCode = segments[segments.length - 1].toLowerCase();
 
   if (scannedCode === lastScannedRef.current) return;
   lastScannedRef.current = scannedCode;
 
-  // Debugging opcional
-  console.log("📦 Código escaneado (extraído):", scannedCode);
-  console.log("🧾 Lista de códigos QR en asistentesEvento:", asistentesEvento.map(a => a.qr_code));
+    // Debugging opcional
+    console.log("📦 Código escaneado (extraído):", scannedCode);
+    console.log("🧾 Lista de códigos QR en asistentesEvento:", asistentesEvento.map(a => a.qr_code));
+    console.log("Código escaneado (limpio):", scannedCode);
+    console.log("Código escaneado (chars):", charCodes(scannedCode));
+    asistentesEvento.forEach((a, i) => {
+    console.log(`Asistente #${i} (chars):`, charCodes((a.qr_code ?? "").trim().toLowerCase()));
+  });
+    asistentesEvento.forEach((a, i) => {
+    console.log(`Asistente #${i} -> qr_code: '${a.qr_code}', tipo: ${typeof a.qr_code}`);
+  });
 
-  const match = asistentesEvento.find(
+    // Buscar coincidencia en asistentesEvento
+    const match = asistentesEvento.find(
     (a) => (a.qr_code ?? "").trim().toLowerCase() === scannedCode
   );
+
+  if (!match) {
+    console.warn("No se encontró código QR válido para:", scannedCode);
+    console.warn("Códigos asistentes disponibles:", asistentesEvento.map(a => (a.qr_code ?? "").trim().toLowerCase()));
+  }
+
 
   qrScanner.current?.pause();
 
