@@ -279,23 +279,23 @@ const handleScanSuccess = async (decodedText) => {
       {ev.event_title}
     </option>
   ))}
-</select>
-{eventoSeleccionado && (
-  <div className="relative mt-6 w-full" style={{ maxWidth: "400px", margin: "0 auto" }}>
+</select>{eventoSeleccionado && (
+  <div className="relative w-full h-[320px] sm:h-[400px]" id="reader-wrapper">
+    
+    {/* Contenedor del lector */}
     <div
       id="reader"
       ref={qrRef}
-      className="relative w-full h-[320px] sm:h-[400px] z-10"
+      className="relative w-full h-full z-10"
     />
 
+    {/* Overlay visual de validación */}
     {showOverlay && (
-      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-70 z-50 pointer-events-none">
+      <div className="absolute-overlay flex flex-col items-center justify-center bg-black bg-opacity-70">
         <img
           src={
             validacion?.status === "ok"
               ? checkImg
-              : validacion?.status === "ya-validado"
-              ? crossImg
               : crossImg
           }
           alt={validacion?.status === "ok" ? "Validado" : "Inválido"}
@@ -320,25 +320,20 @@ const handleScanSuccess = async (decodedText) => {
   </div>
 )}
 
+{/* Info adicional si está validado correctamente */}
+{validacion?.status === "ok" && (
+  <div className="mt-4 p-4 rounded bg-white shadow text-black text-center">
+    <strong>Nombre:</strong>{" "}
+    {validacion.asistente?.nombre ||
+      validacion.asistente?.name ||
+      validacion.asistente?.nombre_completo ||
+      "Desconocido"}
+    <pre className="text-xs bg-gray-100 text-left p-2 mt-2 rounded overflow-x-auto">
+      {JSON.stringify(validacion.asistente, null, 2)}
+    </pre>
+  </div>
+)}
 
-       
-<div className="relative mt-6 w-full" style={{ maxWidth: "400px", margin: "0 auto" }}>
-  <div id="reader" ref={qrRef} className="w-full h-[320px] sm:h-[400px]" />
-
-</div>      
-
-      {validacion?.status === "ok" && (
-        <div className="mt-4 p-4 rounded bg-white shadow text-black text-center">
-          <strong>Nombre:</strong>{" "}
-          {validacion.asistente?.nombre ||
-            validacion.asistente?.name ||
-            validacion.asistente?.nombre_completo ||
-            "Desconocido"}
-          <pre className="text-xs bg-gray-100 text-left p-2 mt-2 rounded overflow-x-auto">
-            {JSON.stringify(validacion.asistente, null, 2)}
-          </pre>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import App from './App';
+import './index.css'; 
 //importe estos dos administradores nuevos.
 import { EventoProvider } from "./context/EventoContext";
 import { QRProvider } from "./context/QRContext";

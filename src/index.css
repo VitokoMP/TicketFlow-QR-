@@ -1,0 +1,40 @@
+#reader {
+  position: relative;
+  z-index: 10; /* base */
+}
+#reader > div[style*="Scanner paused"] {
+  z-index: 60 !important;
+  pointer-events: auto;
+  position: absolute; /* asegurar que esté posicionado */
+  top: 0;
+  width: 100%;
+  text-align: center;
+  background: rgba(9,9,9,0.46);
+  color: rgb(255,236,236);
+  padding: 0.5rem 0;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+#reader video,
+#reader canvas {
+  position: relative;
+  z-index: 10;
+}
+
+#reader-wrapper {
+  position: relative;
+  z-index: 20;
+}
+
+#reader-wrapper >  .absolute-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background-color: rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
