@@ -5,8 +5,6 @@ import checkImg from '../public/img/check.png';
 import crossImg from '../public/img/cross.png';
 import { useMemo } from "react";
 
-
-
 export default function ScanQR() {
   const {
     eventos = [],
@@ -16,7 +14,7 @@ export default function ScanQR() {
     eventoSeleccionado,
     setEventoSeleccionado,
     setLoading,
-    selectEvento, // <-- agrega esto
+    selectEvento,
   } = useEvento();
 
   const [cameraStarted, setCameraStarted] = useState(false);
@@ -29,15 +27,14 @@ export default function ScanQR() {
 
   //const asistentesEvento = asistentes?.[String(eventoSeleccionado?.event_id)] || [];
 
-const asistentesEvento = useMemo(() => {
-  if (!eventoSeleccionado?.event_id) return [];
-  const lista = asistentes?.[String(eventoSeleccionado.event_id)] || [];
-  console.log("🧮 useMemo -> asistentesEvento:", lista.length);
-  return lista;
-}, [asistentes, eventoSeleccionado]);
+  const asistentesEvento = useMemo(() => {
+    if (!eventoSeleccionado?.event_id) return [];
+      const lista = asistentes?.[String(eventoSeleccionado.event_id)] || [];
+      console.log("🧮 useMemo -> asistentesEvento:", lista.length);
+      return lista;
+    }, [asistentes, eventoSeleccionado]);
 
-
-   useEffect(() => {
+  useEffect(() => {
     console.log("🚨 eventoSeleccionado cambió:", eventoSeleccionado);
   }, [eventoSeleccionado]);
 
@@ -116,10 +113,13 @@ useEffect(() => {
     console.log("📦 Respuesta cruda del endpoint:", data);
     
     if (data.success && Array.isArray(data.attendees)) {
-      setAsistentes((prev) => ({
-        ...prev,
-        [String(eventId)]: data.attendees,
-      }));
+      setAsistentes((prev) => {
+        console.log('setAsistentes llamado', prev);
+        return {
+          ...prev,
+          [String(eventId)]: data.attendees,
+        };
+      });
       console.log("✅ Asistentes sincronizados para evento", eventId, data.attendees);
     } else {
       console.error("❌ Error en datos recibidos:", data);
@@ -160,29 +160,61 @@ const startScanner = async () => {
 
 const validarYMarcarAsistente = async (eventId, qrCode) => {
   try {
-    // 1. Verificar si ya fue escaneado
     const estadoRes = await fetch(`/wp-json/ticketflow/v1/escanear/${eventId}/${qrCode}`);
     const estadoData = await estadoRes.json();
 
     console.log("🔍 Estado del QR:", estadoData);
+    console.log("estadoData completo:", estadoData);
+    console.log("estadoData.success:", estadoData.success);
+    console.log("estadoData.scanned:", estadoData.scanned);
 
-    if (!estadoData.success) {
-      return { status: "fail", mensaje: "Código inválido o no registrado" };
-    }
+    if (!estadoData.success && estadoData.status !== 'ALREADY_SCANNED') {
+  return { status: "fail", mensaje: "Código inválido o no registrado" };
+}
 
-    if (estadoData.scanned === true) {
-      return { status: "ya-validado", asistente: estadoData.asistente };
-    }
+if (estadoData.status === "ALREADY_SCANNED") {
+  return { status: "ya-validado", asistente: estadoData.asistente };
+}
+//Felipe Wn, no estas pudiendo marcar como escaneado si ya fue validado
+//revisaste pero aun no validas que los estados estén conectados entre la base de datos la respues y la solicituda marcar.
 
-    // 2. Si no fue escaneado, marcar como escaneado
+    console.log("🔁 Marcando como escaneado:", estadoData.asistente.id);
     const markRes = await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${estadoData.asistente.id}`, {
       method: "POST",
     });
+    console.log("markRes status:", markRes.status);
 
     const markData = await markRes.json();
-    console.log("✅ Marcado como escaneado:", markData);
 
-    return { status: "ok", asistente: estadoData.asistente };
+    console.log("✅ Resultado del marcado:", markData);
+    if (markData.success) {
+      // 🔥 Actualizar el asistente escaneado en el estado global
+      setAsistentes((prev) => {
+          const eventoIdStr = String(eventoSeleccionado?.event_id);
+          if (!eventoIdStr || !prev[eventoIdStr]) return prev;
+
+          const updatedAsistentes = prev[eventoIdStr].map((a) =>
+            String(a.id) === String(markData.asistente.id) ? markData.asistente : a
+          );
+
+          console.log("🔁 Reemplazando asistente con ID:", markData.asistente.id);
+          return {
+            ...prev,
+            [eventoIdStr]: updatedAsistentes,
+          };
+        });
+
+      return {
+        status: "ok",
+        asistente: markData.asistente,
+        mensaje: "Asistente validado correctamente",
+      };
+    } else {
+      return {
+        status: "error",
+        mensaje: markData.mensaje || "Error al marcar como escaneado.",
+      };
+    }
   } catch (error) {
     console.error("❌ Error al validar y marcar:", error);
     return { status: "fail", mensaje: "Error de conexión al validar QR" };
@@ -213,8 +245,6 @@ const handleScanSuccess = async (decodedText) => {
     qrScanner.current?.resume();
   }, 3000);
 };
-
-
 
   console.log("Evento seleccionado:", eventoSeleccionado);
   console.log("Asistentes del evento:", asistentesEvento);
@@ -298,6 +328,11 @@ const handleScanSuccess = async (decodedText) => {
         Asistente validado
       </p>
     )}
+    {validacion?.status === "error" && (
+      <p className="text-red-500 font-bold mt-4 text-lg">
+    {validacion?.mensaje || "Error al validar"}
+      </p>
+)}
   </div>
 )}
 

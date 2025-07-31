@@ -271,7 +271,7 @@ public function enqueue_scripts($hook) {
 
         // Registrar la ruta para marcar un ticket como escaneado
         register_rest_route('ticketflow/v1', '/mark-as-scanned/(?P<id>\d+)', [
-            'methods' => 'POST',
+            'methods' => ['POST','GET'],
             'callback' => [$this, 'mark_as_scanned'],
             'permission_callback' => '__return_true', // Ajusta según seguridad
         ]);
@@ -312,6 +312,7 @@ public function mark_as_scanned($request) {
 
     if (!$asistente) {
         return new WP_REST_Response([
+            'success'   => false,
             'status' => 'NOT_FOUND',
             'mensaje' => 'No se encontró el asistente con ese ID.'
         ], 404);
@@ -320,6 +321,7 @@ public function mark_as_scanned($request) {
     // Si ya fue escaneado, no volvemos a marcarlo
     if ($asistente['scan_status'] !== 'pending') {
         return new WP_REST_Response([
+            'success'   => false,
             'status' => 'ALREADY_SCANNED',
             'mensaje' => 'Este asistente ya fue validado anteriormente.',
             'asistente' => $asistente
@@ -340,6 +342,7 @@ public function mark_as_scanned($request) {
 
     if ($update === false) {
         return new WP_REST_Response([
+            'success'   => false,
             'status' => 'ERROR',
             'mensaje' => 'Error al actualizar el estado en la base de datos.'
         ], 500);
@@ -351,6 +354,7 @@ public function mark_as_scanned($request) {
     ", $id), ARRAY_A);
 
     return new WP_REST_Response([
+        'success'   => true,
         'status' => 'UPDATED',
         'mensaje' => 'Asistente marcado como escaneado.',
         'asistente' => $asistente_actualizado
