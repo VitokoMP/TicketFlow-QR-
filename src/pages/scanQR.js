@@ -24,6 +24,8 @@ export default function ScanQR() {
   const qrScanner = useRef(null);
   const lastScannedRef = useRef("");
   const [validationResult, setValidationResult] = useState(null); // 'success' | 'error' | null
+  const [overlayVisible, setOverlayVisible] = useState(false);
+  const [overlayStatus, setOverlayStatus] = useState(null); // 'success' | 'error' | 'already_scanned'
 
   //const asistentesEvento = asistentes?.[String(eventoSeleccionado?.event_id)] || [];
 
@@ -164,9 +166,7 @@ const validarYMarcarAsistente = async (eventId, qrCode) => {
     const estadoData = await estadoRes.json();
 
     console.log("🔍 Estado del QR:", estadoData);
-    console.log("estadoData completo:", estadoData);
-    console.log("estadoData.success:", estadoData.success);
-    console.log("estadoData.scanned:", estadoData.scanned);
+    console.log("🔍 Estado del QR YQUE WEA!");
 
     if (!estadoData.success && estadoData.status !== 'ALREADY_SCANNED') {
   return { status: "fail", mensaje: "Código inválido o no registrado" };
@@ -175,17 +175,16 @@ const validarYMarcarAsistente = async (eventId, qrCode) => {
 if (estadoData.status === "ALREADY_SCANNED") {
   return { status: "ya-validado", asistente: estadoData.asistente };
 }
-//Felipe Wn, no estas pudiendo marcar como escaneado si ya fue validado
-//revisaste pero aun no validas que los estados estén conectados entre la base de datos la respues y la solicituda marcar.
+     console.log("🔥 Enviando POST a mark-as-scanned:", estadoData.asistente.id);
 
     console.log("🔁 Marcando como escaneado:", estadoData.asistente.id);
     const markRes = await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${estadoData.asistente.id}`, {
       method: "POST",
     });
+    //Error Al Validar y Marcar
     console.log("markRes status:", markRes.status);
 
     const markData = await markRes.json();
-
     console.log("✅ Resultado del marcado:", markData);
     if (markData.success) {
       // 🔥 Actualizar el asistente escaneado en el estado global
@@ -248,6 +247,14 @@ const handleScanSuccess = async (decodedText) => {
 
   console.log("Evento seleccionado:", eventoSeleccionado);
   console.log("Asistentes del evento:", asistentesEvento);
+    function mostrarOverlay(tipo) {
+      setOverlayStatus(tipo);
+      setOverlayVisible(true);
+      setTimeout(() => {
+        setOverlayVisible(false);
+        setOverlayStatus(null);
+      }, 2500);
+    }
 
   return (
     <div className="px-4 py-2 max-w-md mx-auto">
@@ -273,68 +280,50 @@ const handleScanSuccess = async (decodedText) => {
     </option>
   ))}
 </select>
+{eventoSeleccionado && (
+  <div className="relative mt-6 w-full" style={{ maxWidth: "400px", margin: "0 auto" }}>
+    <div
+      id="reader"
+      ref={qrRef}
+      className="relative w-full h-[320px] sm:h-[400px] z-10"
+    />
 
-      {eventoSeleccionado && (
-  <div className="mt-4">
-    <h3>Asistentes para el evento {eventoSeleccionado.event_title || eventoSeleccionado.event_id}</h3>
-    {asistentesEvento.length === 0 ? (
-      <p>No hay asistentes cargados.</p>
-    ) : (
-      <ul className="list-disc pl-5">
-        {asistentesEvento.map((a) => (
-          <li key={a.id}>
-            {a.nombre || a.qr_code || "Sin nombre"}
-          </li>
-        ))}
-      </ul>
+    {showOverlay && (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-70 z-50 pointer-events-none">
+        <img
+          src={
+            validacion?.status === "ok"
+              ? checkImg
+              : validacion?.status === "ya-validado"
+              ? crossImg
+              : crossImg
+          }
+          alt={validacion?.status === "ok" ? "Validado" : "Inválido"}
+          className="w-32 h-32 md:w-48 md:h-48 animate-pulse"
+        />
+        {validacion?.status === "ya-validado" && (
+          <p className="text-red-500 font-bold mt-4 text-lg">Ya fue validado</p>
+        )}
+        {validacion?.status === "fail" && (
+          <p className="text-red-500 font-bold mt-4 text-lg">Código inválido</p>
+        )}
+        {validacion?.status === "ok" && (
+          <p className="text-green-400 font-bold mt-4 text-lg">Asistente validado</p>
+        )}
+        {validacion?.status === "error" && (
+          <p className="text-red-500 font-bold mt-4 text-lg">
+            {validacion?.mensaje || "Error al validar"}
+          </p>
+        )}
+      </div>
     )}
   </div>
 )}
 
-      {eventoSeleccionado && (
-        <div
-          id="reader"
-          ref={qrRef}
-          className="mt-6 w-full"
-          style={{ maxWidth: "400px", margin: "0 auto" }}
-        />
-      )}
+
+       
 <div className="relative mt-6 w-full" style={{ maxWidth: "400px", margin: "0 auto" }}>
   <div id="reader" ref={qrRef} className="w-full h-[320px] sm:h-[400px]" />
-
-{showOverlay && (
-  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-60 z-40">
-    <img
-      src={
-        validacion?.status === "ok"
-          ? checkImg
-          : validacion?.status === "ya-validado"
-          ? crossImg
-          : crossImg
-      }
-      alt={validacion?.status === "ok" ? "Validado" : "Inválido"}
-      className="w-32 h-32 md:w-48 md:h-48 animate-pulse"
-    />
-    {validacion?.status === "ya-validado" && (
-      <p className="text-red-500 font-bold mt-4 text-lg">Ya fue validado</p>
-    )}
-    {validacion?.status === "fail" && (
-      <p className="text-red-500 font-bold mt-4 text-lg">
-        Código inválido
-      </p>
-    )}
-    {validacion?.status === "ok" && (
-      <p className="text-green-400 font-bold mt-4 text-lg">
-        Asistente validado
-      </p>
-    )}
-    {validacion?.status === "error" && (
-      <p className="text-red-500 font-bold mt-4 text-lg">
-    {validacion?.mensaje || "Error al validar"}
-      </p>
-)}
-  </div>
-)}
 
 </div>      
 

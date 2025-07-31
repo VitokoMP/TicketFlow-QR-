@@ -138,7 +138,12 @@ class WPRK_Plugin {
 //        add_action('ticketflow_update_scans', [$this, 'update_scans']);
 //        add_action('save_post_event', [$this, 'ticketflow_trigger_on_event_publish'], 10, 3);
 //        add_action('init', [$this, 'insert_events_to_db']); // Inserta eventos al iniciar el plugin
-    
+        
+        add_action('rest_api_init', function() {
+            header("Access-Control-Allow-Origin: *");
+            header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+        });
+
         // REST API
         add_action('rest_api_init', [$this, 'create_rest_routes']);
     
@@ -381,12 +386,14 @@ public function get_scan_status_by_qr($event_id, $qr_code) {
         // Evaluamos si está pendiente o ya escaneado
         if ($asistente['scan_status'] === 'pending') {
             return [
+                'success' => true,
                 'status' => 'PENDING',
                 'asistente' => $asistente,
                 'mensaje' => 'Asistente válido y pendiente de validación.'
             ];
         } else {
             return [
+                'success' => true,
                 'status' => 'ALREADY_SCANNED',
                 'asistente' => $asistente,
                 'mensaje' => 'Este asistente ya fue validado.'
@@ -404,6 +411,7 @@ public function get_scan_status_by_qr($event_id, $qr_code) {
 
     if ($otro) {
         return [
+             'success' => false,
             'status' => 'MISMATCH',
             'asistente' => $otro,
             'mensaje' => 'Este código pertenece a otro evento.'
@@ -412,6 +420,7 @@ public function get_scan_status_by_qr($event_id, $qr_code) {
 
     // Tercero: No existe
     return [
+         'success' => false,
         'status' => 'NOT_FOUND',
         'mensaje' => 'Este código QR no está registrado.'
     ];
