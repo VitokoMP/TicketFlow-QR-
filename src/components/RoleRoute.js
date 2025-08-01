@@ -1,0 +1,17 @@
+// src/components/RoleRoute.js
+import React from "react";
+import { Navigate } from "react-router-dom";
+
+const RoleRoute = ({ user, allowedRoles, children }) => {
+  if (!user) {
+    return <Navigate to="/no-autorizado" replace />;
+  }
+
+  if (!allowedRoles.includes(user.role)) {
+    return <Navigate to="/no-autorizado" replace />;
+  }
+
+  return children;
+};
+
+export default RoleRoute;

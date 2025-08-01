@@ -1,40 +1,73 @@
+/* Contenedor principal del escáner */
 #reader {
   position: relative;
-  z-index: 10; /* base */
-}
-#reader > div[style*="Scanner paused"] {
-  z-index: 60 !important;
-  pointer-events: auto;
-  position: absolute; /* asegurar que esté posicionado */
-  top: 0;
   width: 100%;
-  text-align: center;
-  background: rgba(9,9,9,0.46);
-  color: rgb(255,236,236);
-  padding: 0.5rem 0;
-  font-weight: bold;
-  font-size: 0.9rem;
-}
-
-#reader video,
-#reader canvas {
-  position: relative;
+  max-width: 500px;
+  margin: auto;
+  border: none; /* Sin borde rígido */
+  border-radius: 12px;
+  background-color: transparent; /* Fondo transparente */
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.5); /* Sombra verde alrededor */
+  overflow: hidden;
   z-index: 10;
 }
 
-#reader-wrapper {
-  position: relative;
-  z-index: 20;
+/* Video y canvas del lector QR */
+#reader canvas,
+#reader video {
+  z-index: 10;
+  border-radius: 12px;
 }
 
-#reader-wrapper >  .absolute-overlay {
+/* Cuadro del escaneo QR generado por html5-qrcode */
+#reader div > div {
+  border: 2px solid #00ff00; /* Borde verde del cuadro de escaneo */
+  border-radius: 8px;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.4); /* Sombra suave alrededor del cuadro */
+}
+
+/* Icono de validación (check o cruz) */
+#overlay-icon {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90px;
+  height: 90px;
   z-index: 50;
   pointer-events: none;
-  background-color: rgba(0,0,0,0.5);
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+#overlay-icon.visible {
+  opacity: 1;
+}
+
+/* Efecto flash cuando se escanea */
+.flash {
+  animation: flashAnim 0.3s ease-in-out;
+}
+
+@keyframes flashAnim {
+  0% { box-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+  50% { box-shadow: 0 0 20px rgba(255, 255, 255, 0.6); }
+  100% { box-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+}
+
+/* Overlay (fondo para mensajes/check/cruz) */
+.absolute-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 30;
+  background: transparent; /* Sin fondo oscuro por defecto */
   display: flex;
-  flex-direction: column;
-  align-items: center;
   justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  text-align: center;
+  pointer-events: none;
 }

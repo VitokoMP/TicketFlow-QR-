@@ -32,6 +32,24 @@ function wprk_add_custom_roles() {
         'manage_wprk_plugin' => true, // Capacidad personalizada del plugin
     ]);
 }
+add_action('admin_init', function () {
+    if (current_user_can('escaneador') && !defined('DOING_AJAX')) {
+        // Redirigir fuera del dashboard si accede manualmente
+        wp_redirect(admin_url('admin.php?page=wprk-settings'));
+        exit;
+    }
+});
+add_action('admin_menu', function () {
+    if (current_user_can('escaneador')) {
+        global $menu;
+        $allowed = ['TicketFlow QR']; // nombre de tu menú
+        foreach ($menu as $key => $item) {
+            if (!in_array($item[0], $allowed)) {
+                unset($menu[$key]);
+            }
+        }
+    }
+});
 
 /**
  * Limitar el menú de administración para el rol "Escaneador"
@@ -49,6 +67,27 @@ function wprk_limit_admin_menu_for_scanner() {
         }
     }
 }
+//Crear Ruta para los usuarios de WP
+add_action('rest_api_init', function () {
+    register_rest_route('ticketflow/v1', '/me', [
+        'methods'  => 'GET',
+        'callback' => function () {
+            if (!is_user_logged_in()) {
+                return new WP_REST_Response(['error' => 'No autenticado'], 401);
+            }
+
+            $user = wp_get_current_user();
+            return [
+                'id'       => $user->ID,
+                'nombre'   => $user->display_name,
+                'username' => $user->user_login,
+                'email'    => $user->user_email,
+                'roles'    => $user->roles,
+            ];
+        },
+        'permission_callback' => '__return_true', // o limitarlo a roles específicos
+    ]);
+});
 
 /**
  * Ocultar submenús del plugin si el usuario no tiene permisos
@@ -81,7 +120,9 @@ register_activation_hook(__FILE__, function() {
     add_role('ticketflow_productor', 'Productor de Eventos', [
         'read' => true,
         'exportar_qr' => true,
-        'cerrar_evento' => true
+        'cerrar_evento' => true,
+        'read' => true,
+        'edit_posts' => false,
     ]);
     global $wpdb;
 
