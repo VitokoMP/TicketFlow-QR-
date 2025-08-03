@@ -11,7 +11,7 @@ const App = () => {
   const [usuario, setUsuario] = useState(null);
 
   useEffect(() => {
-    fetch('/wp-json/ticketflow/v1/me', { credentials: 'include' })
+    fetch('https://ticketflowqr.test/wp-json/ticketflow/v1/me', { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (data?.nombre) {

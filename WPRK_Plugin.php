@@ -22,6 +22,40 @@ register_activation_hook(__FILE__, function() {
 });
 //PRECISO PARA EL TEMA DE LAS RUTAS EN CACHÉ
 
+// Crear el Hook en Wordpress 
+// Agrega este código en tu plugin PHP principal
+
+add_shortcode('ticketflow_qr', 'shortcode_ticketflow_qr');
+
+function shortcode_ticketflow_qr() {
+    ob_start();
+
+    // Validar si el usuario está logueado
+    if (!is_user_logged_in()) {
+        return '<p>Debes iniciar sesión para acceder al escáner.</p>';
+    }
+
+    $user = wp_get_current_user();
+    $roles = (array) $user->roles;
+
+    // Escaneador
+    if (in_array('escaneador_qr', $roles)) {
+        echo '<div id="react-app-qr"></div>';
+        echo '<script src="' . plugin_dir_url(__FILE__) . 'dist/bundle.js" defer></script>';
+
+    // Administrador
+    } elseif (in_array('administrator', $roles)) {
+        echo '<div id="ticketflow-react-app"></div>';
+        echo '<script src="' . plugin_dir_url(__FILE__) . 'dist/bundle.js" defer></script>';
+
+    // Otro rol: no tiene permisos
+    } else {
+        echo '<p>No tienes permisos para usar esta herramienta.</p>';
+    }
+
+    return ob_get_clean();
+}
+
 /**
  * Crear el rol personalizado "Escaneador" al activar el plugin
  */
@@ -67,16 +101,42 @@ function wprk_limit_admin_menu_for_scanner() {
         }
     }
 }
-//Crear Ruta para los usuarios de WP
+
+add_action('rest_api_init', function () {
+    remove_filter('rest_pre_serve_request', 'rest_send_cors_headers');
+
+    add_filter('rest_pre_serve_request', function ($value) {
+        // Cambia este origen por el de tu app React
+        header('Access-Control-Allow-Origin: https://ticketflowqr.test'); 
+
+        // Para desarrollo local, podrías usar http://localhost:3000
+        // header('Access-Control-Allow-Origin: http://localhost:3000'); 
+
+        header('Access-Control-Allow-Credentials: true');
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce');
+        return $value;
+    });
+}, 15);
+
+add_action('admin_menu', function () {
+  add_menu_page('TicketFlow App', 'TicketFlow', 'read', 'ticketflow-app', function () {
+    echo file_get_contents(plugin_dir_path(__FILE__) . 'dist/index.html');
+  });
+});
+
+
 add_action('rest_api_init', function () {
     register_rest_route('ticketflow/v1', '/me', [
         'methods'  => 'GET',
         'callback' => function () {
+            $user = wp_get_current_user();
+            error_log('Usuario actual: ' . $user->user_login);
+
             if (!is_user_logged_in()) {
-                return new WP_REST_Response(['error' => 'No autenticado'], 401);
+                return new WP_REST_Response(['error' => 'No autenticado...'], 401);
             }
 
-            $user = wp_get_current_user();
             return [
                 'id'       => $user->ID,
                 'nombre'   => $user->display_name,
@@ -85,9 +145,12 @@ add_action('rest_api_init', function () {
                 'roles'    => $user->roles,
             ];
         },
-        'permission_callback' => '__return_true', // o limitarlo a roles específicos
+        'permission_callback' => function () {
+            return is_user_logged_in();
+        },
     ]);
 });
+
 
 /**
  * Ocultar submenús del plugin si el usuario no tiene permisos
@@ -767,6 +830,12 @@ public function ejecutar_sincronizacion_con_boton() {
         // Asegúrate de cargar jQuery UI en el área de administración
         wp_enqueue_script('jquery-ui-sortable');  // jQuery UI ya está incluido en WordPress
     }
+
+    function ticketflow_enqueue_scripts() {
+    wp_enqueue_script('ticketflow-react-app', plugin_dir_url(__FILE__) . 'dist/bundle.js', ['wp-element'], '1.0', true);
+    }
+    add_action('admin_enqueue_scripts', 'ticketflow_enqueue_scripts');
+
     
 //**    
     /**

@@ -9,7 +9,7 @@ import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 
 document.addEventListener('DOMContentLoaded', function () {
-    const element = document.getElementById('wprk-admin-app');
+    const element = document.getElementById('react-app-shortcode') || document.getElementById('wprk-admin-app');
 
     if (element) {
         // Aplicar estilos directamente desde JS como respaldo
