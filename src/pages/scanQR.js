@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { useEvento } from "../context/EventoContext";
 import checkImg from '../public/img/check.png';
 import crossImg from '../public/img/cross.png';
-import { useMemo } from "react";
+import '../public/css/ScanQR.css'; // Cambiado a importación CSS normal
 
 export default function ScanQR() {
   const {
@@ -86,9 +86,15 @@ export default function ScanQR() {
     try {
       // Limpiar contenedor y detener scanner previo
       qrRef.current.innerHTML = "";
+      
+      // Asegurarse de que el div tenga un ID único
+      if (!qrRef.current.id) {
+        qrRef.current.id = `qr-scanner-${Math.random().toString(36).substr(2, 9)}`;
+      }
+      
       await stopScanner();
 
-      const scanner = new Html5Qrcode(qrRef.current.id);
+      const scanner = new Html5Qrcode(qrRef.current.id); // Pasar el ID como string
       qrScanner.current = scanner;
 
       await scanner.start(
@@ -204,25 +210,27 @@ export default function ScanQR() {
 
       {eventoSeleccionado && (
         <div className="relative mt-6 w-full" style={{ maxWidth: "400px", margin: "0 auto" }}>
-          <div id="reader" ref={qrRef} className="w-full h-[320px] sm:h-[400px]" />
+          <div ref={qrRef} className="w-full h-[320px] sm:h-[400px]" />
           
           {showOverlay && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-70 z-50">
-              <img
-                src={validacion?.status === "ok" ? checkImg : crossImg}
-                alt={validacion?.status === "ok" ? "Validado" : "Inválido"}
-                className="w-32 h-32 md:w-48 md:h-48 animate-pulse"
-              />
-              <p className={`font-bold mt-4 text-lg ${
-                validacion?.status === "ok" ? "text-green-400" : 
-                validacion?.status === "ya-validado" ? "text-yellow-400" : 
-                "text-red-500"
-              }`}>
-                {validacion?.status === "ya-validado" ? "Ya fue validado" :
-                 validacion?.status === "fail" ? "Código inválido" :
-                 validacion?.status === "ok" ? "Asistente validado" :
-                 validacion?.mensaje || "Error al validar"}
-              </p>
+            <div className="validation-overlay">
+              <div className="validation-content">
+                <img
+                  src={validacion?.status === "ok" ? checkImg : crossImg}
+                  alt={validacion?.status === "ok" ? "Validado" : "Error"}
+                  className="validation-icon"
+                />
+                <p className={`validation-message ${
+                  validacion?.status === "ok" ? "text-success" :
+                  validacion?.status === "ya-validado" ? "text-warning" :
+                  "text-error"
+                }`}>
+                  {validacion?.status === "ya-validado" ? "Ya fue validado" :
+                   validacion?.status === "fail" ? "Código inválido" :
+                   validacion?.status === "ok" ? "Validación exitosa" :
+                   validacion?.mensaje || "Error al validar"}
+                </p>
+              </div>
             </div>
           )}
 
