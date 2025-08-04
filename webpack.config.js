@@ -9,7 +9,7 @@ module.exports = {
   entry: './src/index.js',  // Entry point único
 output: {
   path: path.resolve(__dirname, 'dist'),
-  filename: 'ticketflow-app.js',  // Nombre más descriptivo
+  filename: 'bundle.js',  // Nombre más descriptivo
   publicPath: publicPath,
 },
   optimization: {

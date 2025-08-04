@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.2.3
+ * Version: 1.2.4
  * License: GPL2
  * Text-Domain: wp-react-ticketflow-qr 
  */
@@ -12,7 +12,7 @@
 // No direct access allowed
 if (!defined('ABSPATH')) exit;
 
-// Constantes del plugin
+// Definimos las constantes del plugin
 define('WPRK_PATH', trailingslashit(plugin_dir_path(__FILE__)));
 define('WPRK_URL', trailingslashit(plugins_url('/', __FILE__)));
 
@@ -20,48 +20,70 @@ define('WPRK_URL', trailingslashit(plugins_url('/', __FILE__)));
  * Clase principal del plugin TicketFlow QR
  */
 class WPRK_Plugin {
-
+      
     public function __construct() {
-        $this->initialize_hooks();
-    }
-
-    private function initialize_hooks() {
-        // Activation hook
-        register_activation_hook(__FILE__, [$this, 'on_activation']);
-
-        // Admin menu y restricción roles
-        add_action('admin_menu', [$this, 'create_admin_menu']);
-        add_action('admin_init', [$this, 'restrict_scanner_role_access']);
-        add_action('admin_menu', [$this, 'limit_admin_menu_for_scanner'], 999);
-
-        // Scripts y estilos frontend y admin
+            $this->initialize_hooks();
+       
         add_action('wp_enqueue_scripts', [$this, 'enqueue_my_react_app']);
-        add_action('wp_enqueue_scripts', [$this, 'enqueue_font_and_custom_styles'], 100);
-
         add_action('admin_enqueue_scripts', [$this, 'enqueue_my_react_app']);
-        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
-        add_action('admin_enqueue_scripts', [$this, 'load_jquery_ui']);
-
-        // REST API
-        add_action('rest_api_init', [$this, 'create_rest_routes']);
-        add_action('rest_api_init', [$this, 'configure_cors_headers']);
-
-        // Otros filtros
+        add_action('init', [$this, 'fix_cors_and_ssl_issues']);
         add_filter('style_loader_tag', [$this, 'replace_font_urls'], 10, 1);
+        add_action('wp_enqueue_scripts', [$this, 'enqueue_font_fixes'], 100);
         add_filter('get_site_icon_url', function($url) {
             return str_replace('http://', 'https://', $url);
         });
-
-        // Fix cors y ssl
-        add_action('init', [$this, 'fix_cors_and_ssl_issues']);
+        // Encolar fuentes localmente
+        add_action('wp_enqueue_scripts', function() {
+            // Elimina estilos problemáticos del tema
+            wp_dequeue_style('basel-fonts');
+            
+            // Registra tus propias fuentes
+            wp_enqueue_style(
+                'ticketflow-fonts', 
+                plugins_url('/fonts/basel-fonts.css', __FILE__),
+                [],
+                '1.0'
+            );
+            
+            // Tu CSS personalizado
+            wp_enqueue_style(
+                'ticketflow-main-css',
+                plugins_url('/dist/main.css', __FILE__),
+                [],
+                filemtime(plugin_dir_path(__FILE__) . 'dist/main.css')
+            );
+        }, 100);
     }
-
+    
+    private function initialize_hooks() {
+        // Activation hooks
+        register_activation_hook(__FILE__, [$this, 'on_activation']);
+        
+        // Admin menu
+        add_action('admin_menu', [$this, 'create_admin_menu']);
+        
+        // Scripts and styles
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_scripts']);
+        
+        // REST API
+        add_action('rest_api_init', [$this, 'create_rest_routes']);
+        add_action('rest_api_init', [$this, 'configure_cors_headers']);
+        
+        // User role restrictions
+        add_action('admin_init', [$this, 'restrict_scanner_role_access']);
+        add_action('admin_menu', [$this, 'limit_admin_menu_for_scanner'], 999);
+        
+        // jQuery UI
+        add_action('admin_enqueue_scripts', [$this, 'load_jquery_ui']);
+    }
+    
+        
     public function enqueue_my_react_app() {
         wp_enqueue_script(
             'my-react-app',
             WPRK_URL . 'dist/bundle.js',
             ['wp-element', 'jquery', 'jquery-ui-sortable'],
-            filemtime(WPRK_PATH . 'dist/bundle.js'),
+            filemtime(plugin_dir_path(__FILE__) . 'dist/bundle.js'),
             true
         );
 
@@ -70,46 +92,24 @@ class WPRK_Plugin {
             'nonce' => wp_create_nonce('wp_rest'),
         ]);
     }
-
-    public function enqueue_font_and_custom_styles() {
-        // Elimina estilos problemáticos del tema en frontend
-        wp_dequeue_style('basel-fonts');
-
-        wp_enqueue_style(
-            'ticketflow-fonts',
-            plugins_url('/fonts/basel-fonts.css', __FILE__),
-            [],
-            '1.0'
-        );
-
-        wp_enqueue_style(
-            'ticketflow-main-css',
-            plugins_url('/dist/main.css', __FILE__),
-            [],
-            filemtime(WPRK_PATH . 'dist/main.css')
-        );
-    }
-
-    public function enqueue_admin_scripts() {
-        // Aquí puedes agregar otros scripts o estilos específicos para admin si quieres
-    }
-
-    public function load_jquery_ui() {
-        wp_enqueue_script('jquery-ui-sortable');
-    }
-
+    /**
+     * Activation hook
+     */
     public function on_activation() {
         flush_rewrite_rules();
         $this->wprk_add_custom_roles();
         $this->create_scans_table();
     }
-
+    
+    /**
+     * Add custom roles
+     */
     public function wprk_add_custom_roles() {
         add_role('escaneador', 'Escaneador', [
             'read' => true,
             'manage_wprk_plugin' => true,
         ]);
-
+        
         add_role('ticketflow_productor', 'Productor de Eventos', [
             'read' => true,
             'exportar_qr' => true,
@@ -117,15 +117,19 @@ class WPRK_Plugin {
             'edit_posts' => false,
         ]);
     }
-
+    
+    /**
+     * Create scans table
+     */
     private function create_scans_table() {
         global $wpdb;
-
+        
         $table_name = $wpdb->prefix . 'ticketflow_scans';
         $charset_collate = $wpdb->get_charset_collate();
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
+        // SQL para crear la tabla con las nuevas columnas
         $sql = "CREATE TABLE $table_name (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             event_id BIGINT(20) UNSIGNED NOT NULL,
@@ -151,7 +155,10 @@ class WPRK_Plugin {
 
         dbDelta($sql);
     }
-
+    
+    /**
+     * Create admin menu
+     */
     public function create_admin_menu() {
         add_menu_page(
             __('TicketFlow', 'wp-react-ticketflow-qr'),
@@ -173,7 +180,10 @@ class WPRK_Plugin {
             100
         );
     }
-
+    
+    /**
+     * Admin page template
+     */
     public function menu_page_template() {
         echo '<div class="wrap">
             <div id="ticketflow-root" style="
