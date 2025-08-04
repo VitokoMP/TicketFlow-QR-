@@ -9,7 +9,7 @@ import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 
 document.addEventListener('DOMContentLoaded', function () {
-    const element = document.getElementById('react-app-shortcode') || document.getElementById('wprk-admin-app');
+    const element = document.getElementById('ticketflow-root');
 
     if (element) {
         // Aplicar estilos directamente desde JS como respaldo
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
         );
         console.log("App rendered");
     } else {
-        console.error('Element with ID "wprk-admin-app" not found');
+        console.error('Element with ID "ticketflow-root" not found');
         document.body.innerHTML = '<p>Error: Application container not found.</p>';
     }
 });

@@ -6,12 +6,12 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const publicPath = '/wp-content/plugins/ticketflow-qr/dist/';
 
 module.exports = {
-  entry: './src/index.js',
-  output: {
-    path: path.resolve(__dirname, 'dist'),
-    filename: 'bundle.js',
-    publicPath: publicPath, // Usamos la variable definida
-  },
+  entry: './src/index.js',  // Entry point único
+output: {
+  path: path.resolve(__dirname, 'dist'),
+  filename: 'ticketflow-app.js',  // Nombre más descriptivo
+  publicPath: publicPath,
+},
   optimization: {
     minimize: true,
     minimizer: [
