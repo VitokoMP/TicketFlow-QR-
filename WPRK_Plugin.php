@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.1.9
+ * Version: 1.2.4
  * License: GPL2
  * Text-Domain: wp-react-ticketflow-qr 
  */
@@ -39,13 +39,18 @@ function wprk_add_custom_roles() {
 add_action('admin_menu', 'wprk_limit_admin_menu_for_scanner', 999);
 function wprk_limit_admin_menu_for_scanner() {
     if (current_user_can('escaneador')) {
-        global $menu;
-        $allowed = ['toplevel_page_wprk-settings']; // Solo este menú se mostrará
-
+        global $menu, $submenu;
+        
+        // Permitir solo el menú de TicketFlow
         foreach ($menu as $key => $item) {
-            if (!in_array($item[2], $allowed)) {
+            if ($item[2] !== 'wprk-settings') {
                 remove_menu_page($item[2]);
             }
+        }
+        
+        // Ocultar el submenú "Sincronizar Eventos" para escaneadores
+        if (isset($submenu['wprk-settings'])) {
+            $submenu['wprk-settings'] = [];
         }
     }
 }
@@ -65,14 +70,13 @@ add_action('admin_menu', function () {
  */
 add_action('admin_init', function () {
     if (current_user_can('escaneador') && is_admin() && !defined('DOING_AJAX')) {
-        $current_screen = get_current_screen();
-        if ($current_screen && $current_screen->base === 'dashboard') {
+        // Redirigir desde cualquier página de admin al panel del plugin
+        if (isset($_GET['page']) && $_GET['page'] !== 'wprk-settings') {
             wp_redirect(admin_url('admin.php?page=wprk-settings'));
             exit;
         }
     }
 });
-
 /**
  * Creamos jook.
  */
@@ -116,6 +120,7 @@ register_activation_hook(__FILE__, function() {
     KEY idx_scan_status (scan_status),
     FOREIGN KEY (event_id) REFERENCES {$wpdb->prefix}posts(ID) ON DELETE CASCADE,
     UNIQUE KEY unique_ticket_event (ticket_id, event_id)
+    UNIQUE KEY unique_event (event_id),
 ) $charset_collate;";
 
     // Ejecutar la creación de la tabla
@@ -166,7 +171,7 @@ class WPRK_Plugin {
         add_menu_page(
             __('TicketFlow', 'wp-react-ticketflow-qr'),
             __('TicketFlow', 'wp-react-ticketflow-qr'),
-            'manage_options',
+            'manage_wprk_plugin',
             'wprk-settings', 
             [$this, 'menu_page_template'],
             'dashicons-tickets-alt',
@@ -199,7 +204,12 @@ public function enqueue_scripts($hook) {
 
     // Cargar jQuery UI Sortable solo en esta página
     wp_enqueue_script('jquery-ui-sortable');
-
+    wp_enqueue_style(
+            'wprk-admin-styles',
+            WPRK_URL . 'css/admin.css',
+            [],
+            '1.0'
+    );
     wp_enqueue_script(
         'my-react-app',
         WPRK_URL . 'dist/bundle.js',
@@ -427,34 +437,20 @@ public function get_scan_status_by_qr($event_id, $qr_code) {
 }
 
 /**
- * Sabremos cuidar lo que nos importa, aca avanzamos para organizar los estados.
-MAntenga el foco
+ * Sabremos cuidar lo que nos importa, aca avanzamos para organizar los estados Unicos!
 
 */ 
 
-public function mep_sincronizar_eventos_y_asistentes() {
-
-    error_log('Entrando en la función mep_sincronizar_eventos_y_asistentes');
-
+ public function mep_sincronizar_eventos_y_asistentes() {
     global $wpdb;
-    $tipo_evento = 'evento';
-    $tipo_asistente = 'asistente';/*
-//esta query hace un delete de los registros duplicados
-    $wpdb->query("
-    DELETE t1 FROM {$wpdb->prefix}ticketflow_scans t1
-    INNER JOIN {$wpdb->prefix}ticketflow_scans t2 
-    ON t1.event_id = t2.event_id 
-    AND t1.id < t2.id
-    WHERE t1.event_id IS NOT NULL
-    AND t2.event_id IS NOT NULL");*/
-
+    
     // Obtener eventos
     $events = $wpdb->get_results("
         SELECT 
             p.ID AS event_id, 
-            p.post_title AS title, 
-            start_meta.meta_value AS start_datetime, 
-            end_meta.meta_value AS end_datetime
+            p.post_title AS event_title, 
+            start_meta.meta_value AS event_start_date, 
+            end_meta.meta_value AS event_end_date
         FROM {$wpdb->prefix}posts AS p
         LEFT JOIN {$wpdb->prefix}postmeta start_meta 
             ON p.ID = start_meta.post_id AND start_meta.meta_key = 'event_start_datetime'
@@ -462,65 +458,108 @@ public function mep_sincronizar_eventos_y_asistentes() {
             ON p.ID = end_meta.post_id AND end_meta.meta_key = 'event_end_datetime'
         WHERE p.post_type = 'mep_events'
         ORDER BY start_meta.meta_value ASC
-    ", ARRAY_A);// Cambié a ARRAY_A para obtener un array asociativo
-//como puedo ver los eventos insertados? ycomo obetener la asociacion de campos desde el select hacia react.
-//    $eventos_insertados = [];
-    // Verificar si se encontraron eventos
-    //en el desarrollo de esta funcion. 
-    /** 
-     */
-        // Insertar o actualizar eventos en la tabla ticketflow_scans
-        foreach ($events as $event) {
-            $event_id = intval($event['event_id']);
-            $event_title = sanitize_text_field($event['title'] ?? '');
-            $event_start = !empty($event['start_datetime']) ? sanitize_text_field($event['start_datetime']) : null;
-            $event_end = !empty($event['end_datetime']) ? sanitize_text_field($event['end_datetime']) : null;
-            $tipo_evento = 'evento';
-
-            if (!$event_start || !$event_end) {
-            error_log("Evento ID {$event_id} omitido: falta fecha inicio o fin.");
+    ", ARRAY_A);
+    
+    $eventos_insertados = [];
+    $eventos_actualizados = 0;
+    
+    // --- SOLUCIÓN MÍNIMA INTEGRADA ---
+    foreach ($events as $event) {
+        $event_id = intval($event['event_id']);
+        
+        // 1. VERIFICAR SI EL EVENTO EXISTE EN WORDPRESS
+        $exists_in_wp = $wpdb->get_var($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->prefix}posts 
+             WHERE ID = %d AND post_type = 'mep_events'",
+            $event_id
+        ));
+        
+        if (!$exists_in_wp) {
+            error_log("Evento ID {$event_id} no existe en WordPress, omitiendo");
             continue;
+        }
+        
+        // 2. VERIFICAR SI YA EXISTE EN NUESTRA TABLA
+        $exists_in_our_table = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}ticketflow_scans 
+             WHERE event_id = %d AND tipo = 'evento'",
+            $event_id
+        ));
+        
+        // Preparar datos del evento
+        $event_title = sanitize_text_field($event['event_title'] ?? '');
+        $event_start = !empty($event['event_start_date']) ? sanitize_text_field($event['event_start_date']) : null;
+        $event_end = !empty($event['event_end_date']) ? sanitize_text_field($event['event_end_date']) : null;
+        
+        // Validación básica de fechas
+        if (!$event_start || !$event_end) {
+            error_log("Evento ID {$event_id} omitido: falta fecha inicio o fin");
+            continue;
+        }
+        
+        if ($exists_in_our_table) {
+            // 3A. ACTUALIZAR EVENTO EXISTENTE
+            $result = $wpdb->update(
+                "{$wpdb->prefix}ticketflow_scans",
+                [
+                    'event_title' => $event_title,
+                    'event_start_date' => $event_start,
+                    'event_end_date' => $event_end
+                ],
+                [
+                    'event_id' => $event_id, 
+                    'tipo' => 'evento'
+                ],
+                ['%s', '%s', '%s'], // formatos de valores
+                ['%d', '%s']        // formatos de condición
+            );
+            
+            if ($result !== false) {
+                $eventos_actualizados++;
+            } else {
+                error_log("Error actualizando evento ID {$event_id}: " . $wpdb->last_error);
             }
-
-
-            $wpdb->query($wpdb->prepare("
-                INSERT INTO {$wpdb->prefix}ticketflow_scans (event_id, event_title, event_start_date, event_end_date, synced, qr_code, tipo)
-                VALUES (%d, %s, %s, %s, %d, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    event_title = VALUES(event_title),
-                    event_start_date = VALUES(event_start_date),
-                    event_end_date = VALUES(event_end_date),
-                    synced = VALUES(synced),
-                    tipo = VALUES(tipo)
-            ", $event_id, $event_title, $event_start, $event_end, 0, null, $tipo_evento));
-
-            $eventos_insertados[] = ['event_id' => $event_id];
+        } else {
+            // 3B. INSERTAR NUEVO EVENTO
+            $result = $wpdb->insert(
+                "{$wpdb->prefix}ticketflow_scans",
+                [
+                    'event_id' => $event_id,
+                    'event_title' => $event_title,
+                    'event_start_date' => $event_start,
+                    'event_end_date' => $event_end,
+                    'tipo' => 'evento'
+                ],
+                ['%d', '%s', '%s', '%s', '%s']
+            );
+            
+            if ($result !== false) {
+                $eventos_insertados[] = $event_id;
+            } else {
+                error_log("Error insertando evento ID {$event_id}: " . $wpdb->last_error);
+            }
         }
-        // porfavor revisa el doble $$ --- errores clasicos.
-        $event_ids = array_map('intval', array_column($events, 'event_id'));
-        if (empty($event_ids)) {
-            return new WP_REST_Response([
-                'success' => false,
-                'message' => 'No se encontraron eventos para sincronizar .'
-            ], 404);
-        }
- 
-    //**
-    // Aqui estamos trabajando con los asistentes 
-    //  */
-    // Obtener asistentes de la base de datos 
-
-
-  // Ahora sincroniza asistentes para todos los eventos
+    }
+    // --- FIN DE SOLUCIÓN MÍNIMA ---
+    
+    // Resto de tu código original para sincronizar asistentes
+    $event_ids = array_map('intval', array_column($events, 'event_id'));
+    if (empty($event_ids)) {
+        return new WP_REST_Response([
+            'success' => false,
+            'message' => 'No se encontraron eventos para sincronizar.'
+        ], 404);
+    }
+    
     $total_asistentes = $this->sync_attendees_to_scans_table($event_ids);
-
+    
     return new WP_REST_Response([
         'success' => true,
         'message' => 'Sincronización completa.',
-        'eventos_insertados' => $eventos_insertados,
+        'eventos_insertados' => count($eventos_insertados),
+        'eventos_actualizados' => $eventos_actualizados,
         'total_asistentes' => $total_asistentes
     ], 200);
-
 }
 
 // Función para traer eventos de la base de datos y que sucede!?

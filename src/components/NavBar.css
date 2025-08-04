@@ -55,7 +55,7 @@
 }
 
 .nav-link {
-  color: #000;
+  color: #000 !important;               /* Asegura que el texto sea negro */
   background-color: #FFD700;
   padding: 10px 20px;
   border-radius: 4px;
@@ -64,14 +64,15 @@
   transition: background-color 0.3s ease;
 }
 
-.nav-link:hover {
-  background-color: #FFC107;
+/* Ajuste para botón activo */
+.active-link {
+  border: 2px solid #FFD700;
+  pointer-events: none;       /* Evita volver a hacer clic */
+  background-color: #000;
+  color: #FFD700 !important;
 }
 
-.active-link {
-  background-color: #000;
-  color: #FFD700;
-}
+
 
 /* Responsive - para pantallas pequeñas */
 @media (max-width: 600px) {

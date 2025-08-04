@@ -1,0 +1,18 @@
+/* Estilos para mejorar la experiencia del escaneador */
+#wprk-admin-app {
+    min-height: 80vh;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+/* Ocultar el escritorio de WordPress para escaneadores */
+body.toplevel_page_wprk-settings #wpcontent {
+    background: #f1f1f1;
+}
+
+body.toplevel_page_wprk-settings #wpbody-content .wrap {
+    margin: 0;
+    padding: 0;
+}

@@ -19,9 +19,22 @@ export default function ScanQR() {
   const [cameraStarted, setCameraStarted] = useState(false);
   const [validacion, setValidacion] = useState(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const qrRef = useRef(null);
   const qrScanner = useRef(null);
   const lastScannedRef = useRef("");
+
+  // Función para verificar si un evento está activo (48 horas antes de su fecha)
+  const isEventoActivo = (evento) => {
+    if (!evento?.event_start_date) return false;
+    
+    const fechaEvento = new Date(evento.event_start_date);
+    const fechaActual = new Date();
+    const diferenciaHoras = (fechaEvento - fechaActual) / (1000 * 60 * 60);
+    
+    return diferenciaHoras <= 48 && diferenciaHoras >= -4; // -4 horas permite eventos que acaban de comenzar
+  };
 
   const asistentesEvento = useMemo(() => {
     if (!eventoSeleccionado?.event_id) return [];
@@ -39,7 +52,7 @@ export default function ScanQR() {
     const idEvento = String(eventoSeleccionado.event_id);
     const asistentesParaEvento = asistentes?.[idEvento] || [];
 
-    if (asistentesParaEvento.length > 0 && !cameraStarted) {
+    if (asistentesParaEvento.length > 0 && !cameraStarted && isEventoActivo(eventoSeleccionado)) {
       startScanner();
     }
 
@@ -84,17 +97,10 @@ export default function ScanQR() {
     if (!qrRef.current) return;
 
     try {
-      // Limpiar contenedor y detener scanner previo
       qrRef.current.innerHTML = "";
-      
-      // Asegurarse de que el div tenga un ID único
-      if (!qrRef.current.id) {
-        qrRef.current.id = `qr-scanner-${Math.random().toString(36).substr(2, 9)}`;
-      }
-      
       await stopScanner();
 
-      const scanner = new Html5Qrcode(qrRef.current.id); // Pasar el ID como string
+      const scanner = new Html5Qrcode(qrRef.current.id || 'qr-scanner-container');
       qrScanner.current = scanner;
 
       await scanner.start(
@@ -111,6 +117,30 @@ export default function ScanQR() {
         mensaje: "No se pudo iniciar la cámara. Usa un navegador compatible y otorga permisos.",
       });
     }
+  };
+
+  const handleEventChange = (e) => {
+    const selectedId = e.target.value;
+    const selected = eventos.find(ev => String(ev.event_id) === selectedId);
+    
+    if (selected && eventoSeleccionado && String(selected.event_id) !== String(eventoSeleccionado.event_id)) {
+      setSelectedEvent(selected);
+      setShowConfirmDialog(true);
+    } else if (selected) {
+      confirmEventChange(selected);
+    }
+  };
+
+  const confirmEventChange = (evento) => {
+    if (!isEventoActivo(evento)) {
+      alert("Este evento no está activo actualmente (no está dentro del rango de 48 horas antes de su inicio).");
+      return;
+    }
+
+    setValidacion(null);
+    setShowOverlay(false);
+    selectEvento(evento);
+    setShowConfirmDialog(false);
   };
 
   const validarYMarcarAsistente = async (eventId, qrCode) => {
@@ -185,32 +215,52 @@ export default function ScanQR() {
   };
 
   return (
-    <div className="px-4 py-2 max-w-md mx-auto">
+    <div className="scan-container">
       <h2 className="text-xl font-bold text-center">Escáner QR TicketFlow</h2>
 
       <select
         value={eventoSeleccionado?.event_id || ""}
-        onChange={(e) => {
-          const selected = eventos.find(ev => String(ev.event_id) === e.target.value);
-          if (selected) {
-            setValidacion(null);
-            setShowOverlay(false);
-            selectEvento(selected);
-          }
-        }}
-        className="border p-2 mt-4 w-full rounded"
+        onChange={handleEventChange}
+        className="event-selector"
       >
         <option value="">Selecciona un evento</option>
         {eventos.map(ev => (
-          <option key={ev.event_id} value={String(ev.event_id)}>
-            {ev.event_title}
+          <option 
+            key={ev.event_id} 
+            value={String(ev.event_id)}
+            disabled={!isEventoActivo(ev)}
+          >
+            {ev.event_title} {!isEventoActivo(ev) ? "(No activo)" : ""}
           </option>
         ))}
       </select>
 
-      {eventoSeleccionado && (
-        <div className="relative mt-6 w-full" style={{ maxWidth: "400px", margin: "0 auto" }}>
-          <div ref={qrRef} className="w-full h-[320px] sm:h-[400px]" />
+      {showConfirmDialog && (
+        <div className="confirmation-dialog">
+          <div className="dialog-content">
+            <p>¿Estás seguro de que quieres cambiar al evento "{selectedEvent?.event_title}"?</p>
+            <p>Se detendrá el escaneo del evento actual.</p>
+            <div className="dialog-buttons">
+              <button 
+                onClick={() => confirmEventChange(selectedEvent)}
+                className="confirm-button"
+              >
+                Confirmar
+              </button>
+              <button 
+                onClick={() => setShowConfirmDialog(false)}
+                className="cancel-button"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {eventoSeleccionado && isEventoActivo(eventoSeleccionado) && (
+        <div className="scanner-wrapper">
+          <div id="qr-scanner-container" ref={qrRef} className="qr-scanner" />
           
           {showOverlay && (
             <div className="validation-overlay">
@@ -236,7 +286,7 @@ export default function ScanQR() {
 
           <button
             onClick={() => handleSync(eventoSeleccionado.event_id)}
-            className="mt-4 bg-blue-500 text-white py-2 px-4 rounded w-full"
+            className="sync-button"
           >
             Sincronizar Asistentes
           </button>
@@ -244,7 +294,7 @@ export default function ScanQR() {
       )}
 
       {validacion?.status === "ok" && (
-        <div className="mt-4 p-4 rounded bg-white shadow text-black text-center">
+        <div className="attendee-info">
           <strong>Nombre:</strong>{" "}
           {validacion.asistente?.nombre ||
             validacion.asistente?.name ||
