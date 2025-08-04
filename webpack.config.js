@@ -84,9 +84,8 @@ output: {
     },
   },
   externals: {
-    react: 'React',
-    'react-dom': 'ReactDOM',
-    jquery: 'jQuery',
-  },
+  react: 'React',
+  'react-dom': 'ReactDOM',
+},
   mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
 };

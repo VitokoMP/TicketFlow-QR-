@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.2.4
+ * Version: 1.2.0
  * License: GPL2
  * Text-Domain: wp-react-ticketflow-qr 
  */
@@ -23,9 +23,28 @@ class WPRK_Plugin {
       
     public function __construct() {
             $this->initialize_hooks();
-       
-        add_action('wp_enqueue_scripts', [$this, 'enqueue_my_react_app']);
-        add_action('admin_enqueue_scripts', [$this, 'enqueue_my_react_app']);
+            add_action('wp_enqueue_scripts', function() {
+                wp_deregister_script('wc-cart-fragments');
+            }, 100);
+            add_shortcode('ticketflow_app', function($atts) {
+        // Encolar scripts
+        wp_enqueue_script(
+            'ticketflow-react',
+            plugins_url('/dist/bundle.js', __FILE__),
+            [],
+            filemtime(plugin_dir_path(__FILE__) . 'dist/bundle.js'),
+            true
+        );
+
+        // Pasar datos a React
+        wp_localize_script('ticketflow-react', 'ticketflowApi', [
+            'apiUrl' => esc_url(rest_url('ticketflow/v1')),
+            'nonce' => wp_create_nonce('wp_rest')
+        ]);
+
+        // Contenedor para React
+        return '<div id="ticketflow-root"></div>';
+    });
         add_action('init', [$this, 'fix_cors_and_ssl_issues']);
         add_filter('style_loader_tag', [$this, 'replace_font_urls'], 10, 1);
         add_action('wp_enqueue_scripts', [$this, 'enqueue_font_fixes'], 100);
@@ -77,21 +96,6 @@ class WPRK_Plugin {
         add_action('admin_enqueue_scripts', [$this, 'load_jquery_ui']);
     }
     
-        
-    public function enqueue_my_react_app() {
-        wp_enqueue_script(
-            'my-react-app',
-            WPRK_URL . 'dist/bundle.js',
-            ['wp-element', 'jquery', 'jquery-ui-sortable'],
-            filemtime(plugin_dir_path(__FILE__) . 'dist/bundle.js'),
-            true
-        );
-
-        wp_localize_script('my-react-app', 'appLocalizer', [
-            'apiUrl' => esc_url(rest_url('wprk/v1')),
-            'nonce' => wp_create_nonce('wp_rest'),
-        ]);
-    }
     /**
      * Activation hook
      */
@@ -186,7 +190,7 @@ class WPRK_Plugin {
      */
     public function menu_page_template() {
         echo '<div class="wrap">
-            <div id="ticketflow-root" style="
+            <div id="wprk-admin-app" style="
                 padding: 20px; 
                 border: 1px solid rgb(221, 221, 221); 
                 border-radius: 5px; 
@@ -848,7 +852,7 @@ class WPRK_Plugin {
         // Devolver el contenedor para la app React con estilos inline
         return sprintf(
             '<div id="ticketflow-app-container" style="width: %s; height: %s; background-color: %s; padding: 20px; border-radius: 8px;">
-                <div id="ticketflow-root"></div>
+                <div id="wprk-admin-app"></div>
             </div>',
             esc_attr($atts['width']),
             esc_attr($atts['height']),
