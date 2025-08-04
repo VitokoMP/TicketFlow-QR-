@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
-import { EventoContext } from './context/EventoContext'; // Importamos el contexto
+import { createRoot } from 'react-dom/client';
+import { Routes, Route, useNavigate, HashRouter } from 'react-router-dom';
+import { EventoProvider, EventoContext } from './context/EventoContext';
+import { QRProvider } from './context/QRContext';
+
 import Base from './components/Base';
 import NavBar from './components/NavBar';
 import Footer from './components/Footer';
@@ -13,16 +16,14 @@ import Menu from './pages/Menu';
 import ScannerTool from './scanner/ScannerTool';
 
 const App = () => {
-  const { userData, loading } = useContext(EventoContext); // Usamos el contexto
+  const { userData, loading } = useContext(EventoContext);
   const navigate = useNavigate();
 
-  // Verificamos si tenemos datos de usuario
   const usuario = userData || null;
 
-  // Redirigir según el rol cuando se cargan los datos
   useEffect(() => {
     if (!loading && usuario) {
-      switch(usuario.role) {
+      switch (usuario.role) {
         case 'admin':
         case 'producer':
           navigate('/menu');
@@ -36,15 +37,9 @@ const App = () => {
     }
   }, [loading, usuario, navigate]);
 
-  // Mostrar splash screen mientras se carga
-  if (loading) {
-    return <Splash />;
-  }
+  if (loading) return <Splash />;
 
-  // Mostrar login si no hay usuario
-  if (!usuario) {
-    return <Login />;
-  }
+  if (!usuario) return <Login />;
 
   return (
     <>
@@ -52,7 +47,6 @@ const App = () => {
       <br />
       <Routes>
         <Route path="/" element={<Base />} />
-        
         <Route
           path="/menu"
           element={
@@ -61,7 +55,6 @@ const App = () => {
             </RoleRoute>
           }
         />
-        
         <Route
           path="/scanner"
           element={
@@ -70,7 +63,6 @@ const App = () => {
             </RoleRoute>
           }
         />
-        
         <Route
           path="/event-info"
           element={
@@ -79,7 +71,6 @@ const App = () => {
             </RoleRoute>
           }
         />
-
         <Route path="/no-autorizado" element={<NoAutorizado />} />
         <Route path="*" element={<p>Página no encontrada: 404!</p>} />
       </Routes>
@@ -89,4 +80,26 @@ const App = () => {
   );
 };
 
-export default App;
+// Montaje de la app en DOMContentLoaded
+document.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('ticketflow-root');
+  if (!container) {
+    console.error('Element with ID "ticketflow-root" not found');
+    document.body.innerHTML = '<p>Error: Application container not found.</p>';
+    return;
+  }
+
+  const root = createRoot(container);
+  root.render(
+    <HashRouter>
+      <EventoProvider>
+        <QRProvider>
+          <App />
+        </QRProvider>
+      </EventoProvider>
+    </HashRouter>
+  );
+
+  console.log('React app mounted in #ticketflow-root');
+});
+

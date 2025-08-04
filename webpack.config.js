@@ -72,7 +72,7 @@ output: {
   },
   plugins: [
     new MiniCssExtractPlugin({
-      filename: 'main.[contenthash].css',
+      filename: 'main.css',
     }),
   ],
   resolve: {
