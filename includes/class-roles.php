@@ -1,68 +1,111 @@
 <?php
 class TicketFlow_Roles {
+    const ROLES_VERSION = '1.2.7'; // Versión actual de la estructura de roles
+
     public static function init() {
         add_action('init', [self::class, 'init_roles']);
         add_action('admin_init', [self::class, 'update_user_capabilities']);
         add_action('admin_menu', [self::class, 'clean_admin_menu'], 999);
         add_action('admin_init', [self::class, 'redirect_scanners']);
+        
+        // Registrar hook de activación
+        register_activation_hook(__FILE__, [self::class, 'activate']);
+    }
+
+    public static function activate() {
+        self::check_roles_version();
+    }
+
+    public static function check_roles_version() {
+        $stored_version = get_option('ticketflow_roles_version', '0');
+        
+        if (version_compare($stored_version, self::ROLES_VERSION, '<')) {
+            self::update_roles();
+            update_option('ticketflow_roles_version', self::ROLES_VERSION);
+        }
+    }
+
+    private static function update_roles() {
+        remove_role('escaneador');
+        remove_role('ticketflow_productor');
+        self::init_roles();
+        
+        error_log('TicketFlow: Roles actualizados a versión ' . self::ROLES_VERSION);
     }
 
     public static function init_roles() {
-        // Rol Escaneador
+        // Rol Escaneador con prefijos consistentes
         add_role('escaneador', 'Escaneador', [
             'read' => true,
-            'escanear_qr' => true,
-            'ver_dashboard' => true,
-            'manage_wprk_plugin' => true 
+            'ticketflow_scan_qr' => true,
+            'ticketflow_view_dashboard' => true,
+            'upload_files' => true
         ]);
 
-        // Rol Productor
+        // Rol Productor con prefijos consistentes
         add_role('ticketflow_productor', 'Productor de Eventos', [
             'read' => true,
-            'exportar_qr' => true,
-            'cerrar_evento' => true,
-            'ver_dashboard' => true,
-            'edit_events' => true
+            'ticketflow_export_qr' => true,
+            'ticketflow_close_event' => true,
+            'ticketflow_view_dashboard' => true,
+            'ticketflow_edit_events' => true,
+            'upload_files' => true
         ]);
-        // Rol Administrador de TicketFlow
+
+        // Asignar capacidades a Administrador
         $admin = get_role('administrator');
         if ($admin) {
-            $admin->add_cap('escanear_qr');
-            $admin->add_cap('exportar_qr');
-            $admin->add_cap('ver_dashboard');
+            $admin_caps = [
+                'ticketflow_scan_qr',
+                'ticketflow_export_qr',
+                'ticketflow_view_dashboard',
+                'ticketflow_close_event',
+                'ticketflow_edit_events'
+            ];
+            
+            foreach ($admin_caps as $cap) {
+                $admin->add_cap($cap);
+            }
         }
     }
 
     public static function update_user_capabilities() {
-        // Mover aquí tu función ticketflow_actualizar_permisos_usuarios
         $escaneadores = get_users(['role' => 'escaneador']);
         foreach ($escaneadores as $usuario) {
-            $usuario->add_cap('escanear_qr');
-            $usuario->add_cap('ver_dashboard');
+            $usuario->add_cap('ticketflow_scan_qr');
+            $usuario->add_cap('ticketflow_view_dashboard');
         }
 
         $productores = get_users(['role' => 'ticketflow_productor']);
         foreach ($productores as $usuario) {
-            $usuario->add_cap('ver_dashboard');
+            $usuario->add_cap('ticketflow_view_dashboard');
         }
     }
 
     public static function clean_admin_menu() {
-        // Mover aquí tu función ticketflow_limpiar_menu
         if (current_user_can('escaneador')) {
-            remove_menu_page('index.php');
-            remove_menu_page('edit.php');
+            global $menu;
+            
+            $allowed = [
+                'ticketflow', // Menú principal del plugin
+                'profile.php'  // Perfil de usuario
+            ];
+            
+            foreach ($menu as $key => $item) {
+                if (!in_array($item[2], $allowed)) {
+                    remove_menu_page($item[2]);
+                }
+            }
         }
     }
 
     public static function redirect_scanners() {
-        // Mover aquí tu función ticketflow_redirigir_escaneadores
         if (current_user_can('escaneador') && !defined('DOING_AJAX')) {
-            $allowed_pages = ['wprk-settings', 'profile.php'];
+            $allowed_pages = ['ticketflow', 'profile.php'];
             $current_page = $_GET['page'] ?? '';
             
             if (!in_array($current_page, $allowed_pages)) {
-                wp_redirect(admin_url('admin.php?page=wprk-settings'));
+                wp_redirect(admin_url('admin.php?page=ticketflow'));
                 exit;
             }
         }

@@ -26,7 +26,7 @@ class TicketFlow_Core {
 
     private function init_components() {
         TicketFlow_Roles::init();
-        $this->admin = new TicketFlow_Admin();
+        $this->admin = new TicketFlow_Admin();//Administración del plugin
         $this->rest_api = new TicketFlow_REST_API();
         TicketFlow_CPT::init();
     }
@@ -35,18 +35,18 @@ class TicketFlow_Core {
         add_action('plugins_loaded', [$this, 'diagnostic_check']);
         add_action('admin_menu', [$this, 'add_sync_menu_page']);
     }
-
+/*
     public function diagnostic_check() {
         if (!class_exists('TicketFlow_Admin')) {
             error_log('Error: La clase TicketFlow_Admin no se cargó correctamente');
         }
-    }
+    }*/
 
     public function add_sync_menu_page() {
         add_menu_page(
             'Sincronizar Eventos',
             'Sincronizar Eventos',
-            'manage_options',
+            'ver_dashboard',
             'sincronizar_eventos',
             [$this, 'ejecutar_sincronizacion_con_boton'],
             'dashicons-update-alt',
