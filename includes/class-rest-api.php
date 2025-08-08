@@ -70,10 +70,24 @@ class TicketFlow_REST_API {
             'methods' => 'GET',
             'callback' => [$this,'mep_get_eventos_activos'],
             'permission_callback' => function() {
-            return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
-            },
-            //'permission_callback' => '__return_true', // ajusta según seguridad
-        ]);
+                // Verificar si el usuario está autenticado
+                if (!is_user_logged_in()) {
+                    return false;
+                }
+
+                // Verificar capacidades directamente o a través de roles
+                $user = wp_get_current_user();
+                $allowed_roles = ['administrator', 'ticketflow_productor', 'escaneador'];
+                
+                // Comprobar si el usuario tiene un rol permitido
+                if (array_intersect($allowed_roles, $user->roles)) {
+                    return true;
+                }
+
+                // O comprobar capacidades específicas
+                return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
+                }
+    ]);
 
         // Registrar la ruta para obtener el estado de escaneo por QR--pendiente
         register_rest_route('ticketflow/v1', '/escanear/(?P<event_id>\d+)/(?P<qr_code>[a-zA-Z0-9\-]+)', [
