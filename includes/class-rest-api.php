@@ -66,28 +66,34 @@ class TicketFlow_REST_API {
         ]);
         
         // Registrar la ruta para obtener eventos activos--ok
-        register_rest_route('ticketflow/v1', '/eventos-activos', [
+      register_rest_route('ticketflow/v1', '/eventos-activos', [
             'methods' => 'GET',
-            'callback' => [$this,'mep_get_eventos_activos'],
+            'callback' => [$this, 'mep_get_eventos_activos'],
             'permission_callback' => function() {
-                // Verificar si el usuario está autenticado
+                // 1. Verificar si el usuario está autenticado
                 if (!is_user_logged_in()) {
+                    error_log('Usuario no autenticado');
                     return false;
                 }
 
-                // Verificar capacidades directamente o a través de roles
                 $user = wp_get_current_user();
+                error_log('Roles del usuario: ' . print_r($user->roles, true));
+                error_log('Capacidades del usuario: ' . print_r($user->allcaps, true));
+
+                // 2. Verificar si tiene un rol permitido (administrador, productor o escaneador)
                 $allowed_roles = ['administrator', 'ticketflow_productor', 'escaneador'];
-                
-                // Comprobar si el usuario tiene un rol permitido
                 if (array_intersect($allowed_roles, $user->roles)) {
                     return true;
                 }
 
-                // O comprobar capacidades específicas
-                return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
+                // 3. Si no tiene un rol permitido, verificar capacidades específicas
+                $has_access = current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
+                if (!$has_access) {
+                    error_log('El usuario no tiene permisos para acceder al endpoint.');
                 }
-    ]);
+                return $has_access;
+            }
+        ]);
 
         // Registrar la ruta para obtener el estado de escaneo por QR--pendiente
         register_rest_route('ticketflow/v1', '/escanear/(?P<event_id>\d+)/(?P<qr_code>[a-zA-Z0-9\-]+)', [
