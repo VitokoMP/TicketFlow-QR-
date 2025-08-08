@@ -1,257 +1,325 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { useEvento } from "../context/EventoContext";
 import checkImg from '../public/img/check.png';
 import crossImg from '../public/img/cross.png';
-import '../public/css/ScanQR.css'; // Cambiado a importación CSS normal
+import warningImg from '../public/img/cross.png'; // Corregí la ruta duplicada
+import '../public/css/ScanQR.css';
+
+// Tiempos en milisegundos para mejor control
+const SCAN_DELAY = 3000;
+const DEBOUNCE_TIME = 500;
 
 export default function ScanQR() {
-  const {
-    eventos = [],
-    asistentes = {},
-    setAsistentes,
-    fetchEventos,
-    eventoSeleccionado,
-    setLoading,
-    selectEvento,
-  } = useEvento();
+    const {
+        eventos = [],
+        asistentes = {},
+        setAsistentes,
+        fetchEventos,
+        eventoSeleccionado,
+        setLoading,
+        selectEvento,
+    } = useEvento();
 
-  const [cameraStarted, setCameraStarted] = useState(false);
-  const [validacion, setValidacion] = useState(null);
-  const [showOverlay, setShowOverlay] = useState(false);
-  const qrRef = useRef(null);
-  const qrScanner = useRef(null);
-  const lastScannedRef = useRef("");
+    const [scanState, setScanState] = useState({
+        cameraActive: false,
+        validation: null,
+        showOverlay: false,
+        lastScanned: ""
+    });
 
-  const asistentesEvento = useMemo(() => {
-    if (!eventoSeleccionado?.event_id) return [];
-    const lista = asistentes?.[String(eventoSeleccionado.event_id)] || [];
-    return lista;
-  }, [asistentes, eventoSeleccionado]);
+    const qrRef = useRef(null);
+    const qrScanner = useRef(null);
+    const timeoutRef = useRef(null);
 
-  useEffect(() => {
-    fetchEventos();
-  }, []);
+    // Memoized para mejor performance
+    const asistentesEvento = useMemo(() => {
+        if (!eventoSeleccionado?.event_id) return [];
+        return asistentes[eventoSeleccionado.event_id] || [];
+    }, [asistentes, eventoSeleccionado]);
 
-  useEffect(() => {
-    if (!eventoSeleccionado?.event_id) return;
-
-    const idEvento = String(eventoSeleccionado.event_id);
-    const asistentesParaEvento = asistentes?.[idEvento] || [];
-
-    if (asistentesParaEvento.length > 0 && !cameraStarted) {
-      startScanner();
-    }
-
-    if (asistentesParaEvento.length === 0 && cameraStarted) {
-      stopScanner();
-    }
-  }, [asistentes, eventoSeleccionado]);
-
-  const stopScanner = async () => {
-    if (qrScanner.current) {
-      await qrScanner.current.stop().catch(() => {});
-      qrScanner.current.clear();
-      setCameraStarted(false);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      stopScanner();
-    };
-  }, []);
-
-  const handleSync = async (eventId) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`/wp-json/ticketflow/v1/sync-attendees/${eventId}`);
-      const data = await response.json();
-      
-      if (data.success && Array.isArray(data.attendees)) {
-        setAsistentes((prev) => ({
-          ...prev,
-          [String(eventId)]: data.attendees,
-        }));
-      }
-    } catch (error) {
-      console.error("Error al sincronizar asistentes:", error);
-    }
-    setLoading(false);
-  };
-
-  const startScanner = async () => {
-    if (!qrRef.current) return;
-
-    try {
-      // Limpiar contenedor y detener scanner previo
-      qrRef.current.innerHTML = "";
-      
-      // Asegurarse de que el div tenga un ID único
-      if (!qrRef.current.id) {
-        qrRef.current.id = `qr-scanner-${Math.random().toString(36).substr(2, 9)}`;
-      }
-      
-      await stopScanner();
-
-      const scanner = new Html5Qrcode(qrRef.current.id); // Pasar el ID como string
-      qrScanner.current = scanner;
-
-      await scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        handleScanSuccess
-      );
-
-      setCameraStarted(true);
-    } catch (err) {
-      console.error("Error al iniciar cámara:", err);
-      setValidacion({
-        status: "fail",
-        mensaje: "No se pudo iniciar la cámara. Usa un navegador compatible y otorga permisos.",
-      });
-    }
-  };
-
-  const validarYMarcarAsistente = async (eventId, qrCode) => {
-    try {
-      const estadoRes = await fetch(`/wp-json/ticketflow/v1/escanear/${eventId}/${qrCode}`);
-      const estadoData = await estadoRes.json();
-
-      if (!estadoData.success && estadoData.status !== 'ALREADY_SCANNED') {
-        return { status: "fail", mensaje: "Código inválido o no registrado" };
-      }
-
-      if (estadoData.status === "ALREADY_SCANNED") {
-        return { status: "ya-validado", asistente: estadoData.asistente };
-      }
-
-      const markRes = await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${estadoData.asistente.id}`, {
-        method: "POST",
-      });
-      const markData = await markRes.json();
-      
-      if (markData.success) {
-        setAsistentes((prev) => {
-          const eventoIdStr = String(eventoSeleccionado?.event_id);
-          if (!eventoIdStr || !prev[eventoIdStr]) return prev;
-
-          const updatedAsistentes = prev[eventoIdStr].map((a) =>
-            String(a.id) === String(markData.asistente.id) ? markData.asistente : a
-          );
-
-          return {
-            ...prev,
-            [eventoIdStr]: updatedAsistentes,
-          };
-        });
-
-        return {
-          status: "ok",
-          asistente: markData.asistente,
-          mensaje: "Asistente validado correctamente",
+    // Efectos de limpieza
+    useEffect(() => {
+        fetchEventos();
+        
+        return () => {
+            stopScanner();
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
-      }
-      return {
-        status: "error",
-        mensaje: markData.mensaje || "Error al marcar como escaneado.",
-      };
-    } catch (error) {
-      return { status: "fail", mensaje: "Error de conexión al validar QR" };
-    }
-  };
+    }, [fetchEventos]);
 
-  const handleScanSuccess = async (decodedText) => {
-    if (!eventoSeleccionado) return;
+    // Efecto para manejar cámara basado en eventos/asistentes
+    useEffect(() => {
+        if (!eventoSeleccionado?.event_id) return;
 
-    const segments = decodedText.trim().split("/").filter(Boolean);
-    const scannedCode = segments[segments.length - 1].toLowerCase();
+        if (asistentesEvento.length > 0 && !scanState.cameraActive) {
+            startScanner();
+        } else if (asistentesEvento.length === 0 && scanState.cameraActive) {
+            stopScanner();
+        }
+    }, [asistentesEvento, eventoSeleccionado, scanState.cameraActive]);
 
-    if (scannedCode === lastScannedRef.current) return;
-    lastScannedRef.current = scannedCode;
+    // Scanner functions
+    const startScanner = useCallback(async () => {
+        if (!qrRef.current) return;
 
-    qrScanner.current?.pause();
+        try {
+            if (qrScanner.current?.isScanning) {
+                await qrScanner.current.stop();
+            }
 
-    const resultado = await validarYMarcarAsistente(eventoSeleccionado.event_id, scannedCode);
-    setValidacion(resultado);
-    setShowOverlay(true);
+            const config = {
+                fps: 10,
+                qrbox: { width: 250, height: 250 },
+                rememberLastUsedCamera: true
+            };
 
-    setTimeout(() => {
-      setShowOverlay(false);
-      setValidacion(null);
-      lastScannedRef.current = "";
-      qrScanner.current?.resume();
-    }, 3000);
-  };
+            qrScanner.current = new Html5Qrcode(qrRef.current.id);
+            
+            await qrScanner.current.start(
+                { facingMode: "environment" },
+                config,
+                handleScanSuccess,
+                handleScanError
+            );
 
-  return (
-    <div className="px-4 py-2 max-w-md mx-auto">
-      <h2 className="text-xl font-bold text-center">Escáner QR TicketFlow</h2>
+            setScanState(prev => ({ ...prev, cameraActive: true }));
+        } catch (err) {
+            console.error("Camera error:", err);
+            setScanState(prev => ({
+                ...prev,
+                validation: {
+                    status: "error",
+                    mensaje: "Error al iniciar cámara. Verifica permisos y conexión."
+                }
+            }));
+        }
+    }, []);
 
-      <select
-        value={eventoSeleccionado?.event_id || ""}
-        onChange={(e) => {
-          const selected = eventos.find(ev => String(ev.event_id) === e.target.value);
-          if (selected) {
-            setValidacion(null);
-            setShowOverlay(false);
-            selectEvento(selected);
-          }
-        }}
-        className="border p-2 mt-4 w-full rounded"
-      >
-        <option value="">Selecciona un evento</option>
-        {eventos.map(ev => (
-          <option key={ev.event_id} value={String(ev.event_id)}>
-            {ev.event_title}
-          </option>
-        ))}
-      </select>
+    const stopScanner = useCallback(async () => {
+        if (qrScanner.current?.isScanning) {
+            try {
+                await qrScanner.current.stop();
+                qrScanner.current.clear();
+            } catch (err) {
+                console.error("Error stopping scanner:", err);
+            }
+        }
+        setScanState(prev => ({ ...prev, cameraActive: false }));
+    }, []);
 
-      {eventoSeleccionado && (
-        <div className="relative mt-6 w-full" style={{ maxWidth: "400px", margin: "0 auto" }}>
-          <div ref={qrRef} className="w-full h-[320px] sm:h-[400px]" />
-          
-          {showOverlay && (
-            <div className="validation-overlay">
-              <div className="validation-content">
-                <img
-                  src={validacion?.status === "ok" ? checkImg : crossImg}
-                  alt={validacion?.status === "ok" ? "Validado" : "Error"}
-                  className="validation-icon"
-                />
-                <p className={`validation-message ${
-                  validacion?.status === "ok" ? "text-success" :
-                  validacion?.status === "ya-validado" ? "text-warning" :
-                  "text-error"
-                }`}>
-                  {validacion?.status === "ya-validado" ? "Ya fue validado" :
-                   validacion?.status === "fail" ? "Código inválido" :
-                   validacion?.status === "ok" ? "Validación exitosa" :
-                   validacion?.mensaje || "Error al validar"}
-                </p>
-              </div>
+    // API handlers
+    const handleSync = useCallback(async (eventId) => {
+        setLoading(true);
+        try {
+            const response = await fetch(`/wp-json/ticketflow/v1/sync-attendees/${eventId}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                setAsistentes(prev => ({
+                    ...prev,
+                    [eventId]: data.attendees || [],
+                }));
+            }
+        } catch (error) {
+            console.error("Sync error:", error);
+            setScanState(prev => ({
+                ...prev,
+                validation: {
+                    status: "error",
+                    mensaje: "Error al sincronizar asistentes"
+                }
+            }));
+        }
+        setLoading(false);
+    }, [setAsistentes, setLoading]);
+
+    const validarYMarcarAsistente = useCallback(async (eventId, qrCode) => {
+        try {
+            // Verificar estado primero
+            const estadoRes = await fetch(`/wp-json/ticketflow/v1/escanear/${eventId}/${qrCode}`);
+            const estadoData = await estadoRes.json();
+
+            // Manejar diferentes estados
+            if (!estadoData.success) {
+                return { 
+                    status: estadoData.status || "error",
+                    mensaje: estadoData.mensaje || "Ticket inválido",
+                    asistente: estadoData.asistente 
+                };
+            }
+
+            // Marcar como escaneado si es válido
+            const markRes = await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${estadoData.asistente.id}`, {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': wpApiSettings.nonce // Asegurar seguridad
+                }
+            });
+
+            const markData = await markRes.json();
+            
+            if (markData.success) {
+                // Actualizar estado global optimizado
+                setAsistentes(prev => {
+                    const newState = { ...prev };
+                    const eventKey = String(eventId);
+                    
+                    if (newState[eventKey]) {
+                        newState[eventKey] = newState[eventKey].map(a => 
+                            String(a.id) === String(markData.asistente.id) 
+                                ? markData.asistente 
+                                : a
+                        );
+                    }
+                    
+                    return newState;
+                });
+
+                return {
+                    status: "valid",
+                    mensaje: "¡Ticket válido!",
+                    asistente: markData.asistente,
+                };
+            }
+            
+            return {
+                status: "error",
+                mensaje: markData.mensaje || "Error al registrar asistencia",
+            };
+        } catch (error) {
+            console.error("Validation error:", error);
+            return { 
+                status: "error", 
+                mensaje: "Error de conexión" 
+            };
+        }
+    }, [setAsistentes]);
+
+    // Scan handlers
+    const handleScanSuccess = useCallback(async (decodedText) => {
+        if (!eventoSeleccionado || scanState.showOverlay) return;
+
+        const qrCode = decodedText.trim().split("/").pop().toLowerCase();
+        
+        // Debounce para evitar escaneos duplicados
+        if (qrCode === scanState.lastScanned) return;
+        
+        setScanState(prev => ({ ...prev, lastScanned: qrCode }));
+        await qrScanner.current?.pause();
+
+        const resultado = await validarYMarcarAsistente(eventoSeleccionado.event_id, qrCode);
+        
+        setScanState(prev => ({
+            ...prev,
+            validation: resultado,
+            showOverlay: true
+        }));
+
+        // Reset después de delay
+        timeoutRef.current = setTimeout(() => {
+            setScanState(prev => ({
+                ...prev,
+                showOverlay: false,
+                validation: null
+            }));
+            qrScanner.current?.resume();
+        }, SCAN_DELAY);
+    }, [eventoSeleccionado, validarYMarcarAsistente, scanState.lastScanned, scanState.showOverlay]);
+
+    const handleScanError = useCallback((error) => {
+        console.warn("Scan error:", error);
+        // Podrías mostrar feedback al usuario si hay muchos errores
+    }, []);
+
+    // Render helpers
+    const renderValidationOverlay = useCallback(() => {
+        if (!scanState.showOverlay || !scanState.validation) return null;
+
+        const { status, mensaje, asistente } = scanState.validation;
+        const validationConfig = {
+            "valid": { icon: checkImg, title: "TICKET VÁLIDO", color: "#4CAF50" },
+            "error": { icon: crossImg, title: "ERROR", color: "#f44336" },
+            "mismatch": { icon: warningImg, title: "EVENTO INCORRECTO", color: "#FF9800" },
+            "ya-validado": { icon: warningImg, title: "YA REGISTRADO", color: "#FFC107" }
+        };
+
+        const config = validationConfig[status] || validationConfig.error;
+
+        return (
+            <div className="fullscreen-overlay">
+                <div className="validation-content">
+                    <img src={config.icon} alt={config.title} className="validation-icon" />
+                    <h2 style={{ color: config.color }}>{config.title}</h2>
+                    <p>{mensaje}</p>
+                    
+                    {asistente && (
+                        <div className="attendee-info">
+                            <p><strong>Nombre:</strong> {asistente.name || "N/A"}</p>
+                            {status === "mismatch" && asistente.event_title && (
+                                <p><strong>Evento:</strong> {asistente.event_title}</p>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
-          )}
+        );
+    }, [scanState.showOverlay, scanState.validation]);
 
-          <button
-            onClick={() => handleSync(eventoSeleccionado.event_id)}
-            className="mt-4 bg-blue-500 text-white py-2 px-4 rounded w-full"
-          >
-            Sincronizar Asistentes
-          </button>
-        </div>
-      )}
+    return (
+        <div className="scanner-container">
+            <h1 className="scanner-title">Escáner QR TicketFlow</h1>
 
-      {validacion?.status === "ok" && (
-        <div className="mt-4 p-4 rounded bg-white shadow text-black text-center">
-          <strong>Nombre:</strong>{" "}
-          {validacion.asistente?.nombre ||
-            validacion.asistente?.name ||
-            validacion.asistente?.nombre_completo ||
-            "Desconocido"}
+            <div className="event-selector-container">
+                <select
+                    value={eventoSeleccionado?.event_id || ""}
+                    onChange={(e) => {
+                        const selected = eventos.find(ev => ev.event_id.toString() === e.target.value);
+                        if (selected) {
+                            setScanState({
+                                cameraActive: false,
+                                validation: null,
+                                showOverlay: false,
+                                lastScanned: ""
+                            });
+                            selectEvento(selected);
+                        }
+                    }}
+                    className="event-selector"
+                >
+                    <option value="">Selecciona un evento</option>
+                    {eventos.map(ev => (
+                        <option key={ev.event_id} value={ev.event_id.toString()}>
+                            {ev.event_title} ({new Date(ev.event_start_date).toLocaleDateString()})
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            {eventoSeleccionado && (
+                <div className="scanner-wrapper">
+                    <div id="qr-reader" ref={qrRef} className="qr-scanner" />
+                    {scanState.cameraActive && !scanState.showOverlay && (
+                        <div className="scanner-overlay">
+                            <div className="scan-frame" />
+                            <p className="scan-instructions">Escanea el código QR del ticket</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {eventoSeleccionado && asistentesEvento.length === 0 && (
+                <button 
+                    onClick={() => handleSync(eventoSeleccionado.event_id)}
+                    className="sync-button"
+                    disabled={scanState.showOverlay}
+                >
+                    Sincronizar Asistentes
+                </button>
+            )}
+
+            {renderValidationOverlay()}
         </div>
-      )}
-    </div>
-  );
+    );
 }
