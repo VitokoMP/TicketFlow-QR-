@@ -50,6 +50,8 @@ class TicketFlow_Core {
         add_action('plugins_loaded', [$this, 'diagnostic_check']);
         add_action('admin_menu', [$this, 'add_sync_menu_page']);
         add_action('admin_init', [$this, 'handle_sync_request']);
+        add_action('init', [$this, 'check_security_headers']);
+
     }
 
     public function add_sync_menu_page() {
@@ -202,5 +204,21 @@ class TicketFlow_Core {
         }
         
         return $results;
+    }
+    public function check_security_headers() {
+        // Verificar si estamos en HTTPS
+        if (is_ssl()) {
+            @ini_set('session.cookie_secure', 1);
+        }
+        
+        @ini_set('session.cookie_httponly', 1);
+        @ini_set('session.cookie_samesite', 'Strict');
+        
+        // Headers de seguridad adicionales
+        if (!headers_sent()) {
+            header('X-Content-Type-Options: nosniff');
+            header('X-Frame-Options: SAMEORIGIN');
+            header('X-XSS-Protection: 1; mode=block');
+        }
     }
 }

@@ -143,6 +143,7 @@ class TicketFlow_Admin {
             'apiUrl' => esc_url_raw(rest_url('ticketflow/v1')),
             'nonce' => wp_create_nonce('wp_rest'),
             'user' => [
+                'id' => get_current_user_id(),
                 'role' => $this->get_user_role(),
                 'can' => [
                     'scan' => current_user_can('ticketflow_scan_qr'),
@@ -150,7 +151,12 @@ class TicketFlow_Admin {
                     'manage' => current_user_can('ticketflow_edit_events')
                 ]
             ],
-            'currentPage' => $this->get_current_page($hook)
+            'currentPage' => $this->get_current_page($hook),
+            'wpRestConfig' => [
+                'root' => esc_url_raw(rest_url()),
+                'nonce' => wp_create_nonce('wp_rest'),
+                'versionString' => 'wp/v2/'
+            ]
         ]);
     }
 

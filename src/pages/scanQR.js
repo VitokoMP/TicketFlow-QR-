@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { useEvento } from "../context/EventoContext";
+import { ScannerAPI } from "../services/apiService"; // Importar el servicio
 import checkImg from '../public/img/check.png';
 import crossImg from '../public/img/cross.png';
 import warningImg from '../public/img/cross.png'; // Corregí la ruta duplicada
@@ -109,11 +110,10 @@ export default function ScanQR() {
     }, []);
 
     // API handlers
-    const handleSync = useCallback(async (eventId) => {
+const handleSync = useCallback(async (eventId) => {
         setLoading(true);
         try {
-            const response = await fetch(`/wp-json/ticketflow/v1/sync-attendees/${eventId}`);
-            const data = await response.json();
+            const data = await ScannerAPI.syncAttendees(eventId);
             
             if (data.success) {
                 setAsistentes(prev => ({
@@ -134,11 +134,10 @@ export default function ScanQR() {
         setLoading(false);
     }, [setAsistentes, setLoading]);
 
-    const validarYMarcarAsistente = useCallback(async (eventId, qrCode) => {
+const validarYMarcarAsistente = useCallback(async (eventId, qrCode) => {
         try {
             // Verificar estado primero
-            const estadoRes = await fetch(`/wp-json/ticketflow/v1/escanear/${eventId}/${qrCode}`);
-            const estadoData = await estadoRes.json();
+            const estadoData = await ScannerAPI.checkTicketStatus(eventId, qrCode);
 
             // Manejar diferentes estados
             if (!estadoData.success) {
@@ -150,15 +149,7 @@ export default function ScanQR() {
             }
 
             // Marcar como escaneado si es válido
-            const markRes = await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${estadoData.asistente.id}`, {
-                method: "POST",
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-WP-Nonce': wpApiSettings.nonce // Asegurar seguridad
-                }
-            });
-
-            const markData = await markRes.json();
+            const markData = await ScannerAPI.markAsScanned(estadoData.asistente.id);
             
             if (markData.success) {
                 // Actualizar estado global optimizado
