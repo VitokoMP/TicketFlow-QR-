@@ -23,8 +23,8 @@ document.addEventListener('DOMContentLoaded', function () {
             <HashRouter>
                 <React.StrictMode>
                 <EventoProvider>
-                        <QRProvider>
-                            <App />
+                        <QRProvider><HeartBeatProvider>
+                            <App /></HeartBeatProvider>
                         </QRProvider>
                     </EventoProvider>
                 </React.StrictMode>

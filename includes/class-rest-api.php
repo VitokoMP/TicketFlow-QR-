@@ -11,10 +11,13 @@ class TicketFlow_REST_API {
     
     public function __construct() {
         add_action('rest_api_init', [$this, 'register_routes']);
-       /* add_action('rest_api_init', function() {
-            header("Access-Control-Allow-Origin: *");
-            header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-        });*/
+        
+            // Endpoint para mantener sesión
+
+        add_action('wp_ajax_ticketflow_heartbeat', [$this, 'heartbeat']);
+
+        // Endpoint REST para estadísticas
+        ///
         add_action('rest_authentication_errors', [$this, 'enforce_authentication']);
     }
 
@@ -96,6 +99,20 @@ class TicketFlow_REST_API {
             'callback' => [$this, 'get_nonce'],
             'permission_callback' => '__return_true'
         ]);
+        
+        register_rest_route('ticketflow/v1', '/stats', [
+            'methods'  => 'GET',
+            'callback' => function($request) {
+                $user_id = get_current_user_id();
+                return [
+                    'events' => count_user_posts($user_id, 'tf_event'),
+                    'tickets' => (int) get_user_meta($user_id, 'tf_tickets_sold', true),
+                ];
+            },
+            'permission_callback' => function() {
+                return current_user_can('ticketflow_view_dashboard');
+            }
+        ]);
 
         // Ejemplo de endpoint protegido
         register_rest_route('ticketflow/v1', '/protected-endpoint', [
@@ -143,10 +160,10 @@ class TicketFlow_REST_API {
         register_rest_route('ticketflow/v1', '/asistentes', [
             'methods' => 'GET',
             'callback' => [$this,'mep_get_asistentes_by_event_ids'],
-            'permission_callback' => function () {
-              return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
-            },
-            //'permission_callback' => '__return_true', // ajusta según seguridad
+            //'permission_callback' => function () {
+            //  return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
+           // },
+        'permission_callback' => '__return_true', // ajusta según seguridad
         ]);
         
         // Registrar la ruta para obtener eventos activos--ok
@@ -207,6 +224,16 @@ class TicketFlow_REST_API {
     public function obtener_eventos() {
         // Implementación actual...
     }
+
+    //********************************######
+    // Principal Conección con el Frontend##
+    // #####################################
+    //****************************#########*/
+
+        public function heartbeat() {
+            check_ajax_referer('wp_rest', '_wpnonce');
+            wp_send_json_success(['status' => 'active']);
+        }
 
     public function get_nonce() {
         return new WP_REST_Response([

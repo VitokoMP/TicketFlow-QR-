@@ -34,7 +34,7 @@ class TicketFlow_Roles {
         error_log('TicketFlow: Roles actualizados a versión ' . self::ROLES_VERSION);
     }
 
-    public function init_roles() {
+    public static function init_roles() {
         // Rol Escaneador
         add_role('escaneador', 'Escaneador', [
             'read' => true,
@@ -70,16 +70,18 @@ class TicketFlow_Roles {
         }
     }
 
-    public function update_user_capabilities() {
-        $escaneadores = get_users(['role' => 'escaneador']);
-        foreach ($escaneadores as $usuario) {
-            $usuario->add_cap('ticketflow_scan_qr');
-            $usuario->add_cap('ticketflow_view_dashboard');
-        }
+    public static function update_user_capabilities() {
+    // Todos los usuarios con rol 'escaneador' obtienen estas capacidades
+    $role = get_role('escaneador');
+    if ($role) {
+        $role->add_cap('ticketflow_scan_qr');
+        $role->add_cap('ticketflow_view_dashboard');
+    }
 
-        $productores = get_users(['role' => 'ticketflow_productor']);
-        foreach ($productores as $usuario) {
-            $usuario->add_cap('ticketflow_view_dashboard');
-        }
+    // Todos los usuarios con rol 'ticketflow_productor' obtienen esta capacidad
+    $role = get_role('ticketflow_productor');
+    if ($role) {
+        $role->add_cap('ticketflow_view_dashboard');
+    }
     }
 }

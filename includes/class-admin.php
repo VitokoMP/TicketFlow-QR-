@@ -1,6 +1,38 @@
 <?php
 class TicketFlow_Admin {
     private static $instance;
+    private $pages = [
+        'main' => [
+            'page_title' => 'TicketFlow',
+            'menu_title' => 'TicketFlow',
+            'capability' => 'ticketflow_view_dashboard',
+            'slug' => 'ticketflow',
+            'callback' => 'render_admin_app',
+            'icon' => 'dashicons-tickets-alt',
+            'position' => 20
+        ],
+        'scanner' => [
+            'page_title' => 'Escanear Tickets',
+            'menu_title' => 'Escáner',
+            'capability' => 'ticketflow_scan_qr',
+            'slug' => 'ticketflow-escanear',
+            'callback' => 'render_scanner'
+        ],
+        'events' => [
+            'page_title' => 'Gestión de Eventos',
+            'menu_title' => 'Eventos',
+            'capability' => 'ticketflow_edit_events',
+            'slug' => 'ticketflow-eventos',
+            'callback' => 'render_events_manager'
+        ],
+        'reports' => [
+            'page_title' => 'Reportes',
+            'menu_title' => 'Reportes',
+            'capability' => 'ticketflow_export_qr',
+            'slug' => 'ticketflow-reportes',
+            'callback' => 'render_reports'
+        ]
+    ];
 
     public static function instance() {
         if (!isset(self::$instance)) {
@@ -20,58 +52,37 @@ class TicketFlow_Admin {
      * Creates the admin menu structure
      */
     public function create_admin_menu() {
-        // Main menu for all authorized users
+        // Main menu
         add_menu_page(
-            __('TicketFlow', 'wp-react-ticketflow-qr'),
-            __('TicketFlow', 'wp-react-ticketflow-qr'),
-            'ticketflow_view_dashboard',
-            'ticketflow',
-            [$this, 'render_admin_app'],
-            'dashicons-tickets-alt',
-            20
+            $this->pages['main']['page_title'],
+            $this->pages['main']['menu_title'],
+            $this->pages['main']['capability'],
+            $this->pages['main']['slug'],
+            [$this, $this->pages['main']['callback']],
+            $this->pages['main']['icon'],
+            $this->pages['main']['position']
         );
 
-        // Full menu for admins and producers
+        // Submenus based on capabilities
         if (current_user_can('ticketflow_edit_events') || current_user_can('manage_options')) {
-            add_submenu_page(
-                'ticketflow',
-                __('Dashboard', 'wp-react-ticketflow-qr'),
-                __('Dashboard', 'wp-react-ticketflow-qr'),
-                'ticketflow_view_dashboard',
-                'ticketflow',
-                [$this, 'render_admin_app']
-            );
-
-            add_submenu_page(
-                'ticketflow',
-                __('Gestión de Eventos', 'wp-react-ticketflow-qr'),
-                __('Eventos', 'wp-react-ticketflow-qr'),
-                'ticketflow_edit_events',
-                'ticketflow-eventos',
-                [$this, 'render_events_manager']
-            );
-
-            add_submenu_page(
-                'ticketflow',
-                __('Reportes', 'wp-react-ticketflow-qr'),
-                __('Reportes', 'wp-react-ticketflow-qr'),
-                'ticketflow_export_qr',
-                'ticketflow-reportes',
-                [$this, 'render_reports']
-            );
+            $this->add_admin_submenu('events');
+            $this->add_admin_submenu('reports');
         }
 
-        // Scanner-specific menu
         if (current_user_can('ticketflow_scan_qr')) {
-            add_submenu_page(
-                'ticketflow',
-                __('Escanear Tickets', 'wp-react-ticketflow-qr'),
-                __('Escáner', 'wp-react-ticketflow-qr'),
-                'ticketflow_scan_qr',
-                'ticketflow-escanear',
-                [$this, 'render_scanner']
-            );
+            $this->add_admin_submenu('scanner');
         }
+    }
+
+    private function add_admin_submenu($page_key) {
+        add_submenu_page(
+            $this->pages['main']['slug'],
+            $this->pages[$page_key]['page_title'],
+            $this->pages[$page_key]['menu_title'],
+            $this->pages[$page_key]['capability'],
+            $this->pages[$page_key]['slug'],
+            [$this, $this->pages[$page_key]['callback']]
+        );
     }
 
     /**
@@ -119,95 +130,101 @@ class TicketFlow_Admin {
         }
     }
 
+    /**
+     * Enqueue scripts and styles
+     */
     public function enqueue_scripts($hook) {
-        $ticketflow_pages = [
-            'toplevel_page_ticketflow',
-            'ticketflow_page_ticketflow-eventos',
-            'ticketflow_page_ticketflow-reportes',
-            'ticketflow_page_ticketflow-escanear'
-        ];
+        $ticketflow_pages = array_map(function($page) {
+            return $this->pages['main']['slug'] . '_page_' . $page['slug'];
+        }, $this->pages);
         
+        $ticketflow_pages[] = 'toplevel_page_' . $this->pages['main']['slug'];
+
         if (!in_array($hook, $ticketflow_pages)) {
             return;
         }
 
+        $asset_file = include(TICKETFLOW_PATH . 'build/index.asset.php');
+
         wp_enqueue_script(
             'ticketflow-admin-js',
-            TICKETFLOW_URL . 'dist/bundle.js',
-            ['wp-element', 'wp-api-fetch'],
-            filemtime(TICKETFLOW_PATH . 'dist/bundle.js'),
+            TICKETFLOW_URL . 'build/index.js',
+            $asset_file['dependencies'],
+            $asset_file['version'],
             true
         );
 
-        wp_localize_script('ticketflow-admin-js', 'ticketflowData', [
-            'apiUrl' => esc_url_raw(rest_url('ticketflow/v1')),
-            'nonce' => wp_create_nonce('wp_rest'),
+        wp_enqueue_style(
+            'ticketflow-admin-css',
+            TICKETFLOW_URL . 'build/index.css',
+            [],
+            $asset_file['version']
+        );
+
+        wp_localize_script('ticketflow-admin-js', 'ticketflowAdminData', [
+            'api' => [
+                'root' => esc_url_raw(rest_url()),
+                'base' => esc_url_raw(rest_url('ticketflow/v1')),
+                'nonce' => wp_create_nonce('wp_rest')
+            ],
             'user' => [
                 'id' => get_current_user_id(),
-                'role' => $this->get_user_role(),
-                'can' => [
+                'roles' => wp_get_current_user()->roles,
+                'capabilities' => [
                     'scan' => current_user_can('ticketflow_scan_qr'),
                     'export' => current_user_can('ticketflow_export_qr'),
                     'manage' => current_user_can('ticketflow_edit_events')
                 ]
             ],
             'currentPage' => $this->get_current_page($hook),
-            'wpRestConfig' => [
-                'root' => esc_url_raw(rest_url()),
-                'nonce' => wp_create_nonce('wp_rest'),
-                'versionString' => 'wp/v2/'
+            'i18n' => [
+                'welcome' => __('Bienvenido al panel de TicketFlow', 'ticketflow')
             ]
         ]);
     }
 
-    private function get_user_role() {
-        $user = wp_get_current_user();
-        return $user->roles[0] ?? '';
-    }
-
     private function get_current_page($hook) {
-        $map = [
-            'toplevel_page_ticketflow' => 'dashboard',
-            'ticketflow_page_ticketflow-eventos' => 'events',
-            'ticketflow_page_ticketflow-reportes' => 'reports',
-            'ticketflow_page_ticketflow-escanear' => 'scanner'
+        $page_map = [
+            'toplevel_page_' . $this->pages['main']['slug'] => 'dashboard',
+            $this->pages['main']['slug'] . '_page_' . $this->pages['scanner']['slug'] => 'scanner',
+            $this->pages['main']['slug'] . '_page_' . $this->pages['events']['slug'] => 'events',
+            $this->pages['main']['slug'] . '_page_' . $this->pages['reports']['slug'] => 'reports'
         ];
-        return $map[$hook] ?? 'dashboard';
+        
+        return $page_map[$hook] ?? 'dashboard';
     }
 
+    /**
+     * Render methods for each page
+     */
     public function render_admin_app() {
-        echo '<div class="wrap ticketflow-app">';
-        echo '<div id="wprk-admin-app"></div>';
-        echo '</div>';
+        $this->render_app_container('wprk-admin-app');
     }
 
     public function render_scanner() {
-        echo '<div class="wrap ticketflow-scanner">';
-        if (current_user_can('ticketflow_scan_qr')) {
-            echo '<div id="ticketflow-scanner-root"></div>';
-        } else {
-            wp_die(__('No tienes permisos para acceder a esta página', 'wp-react-ticketflow-qr'));
+        if (!current_user_can('ticketflow_scan_qr')) {
+            wp_die(__('No tienes permisos para acceder a esta página', 'ticketflow'));
         }
-        echo '</div>';
+        $this->render_app_container('ticketflow-scanner-root');
     }
 
     public function render_events_manager() {
-        echo '<div class="wrap ticketflow-events">';
-        if (current_user_can('ticketflow_edit_events')) {
-            echo '<div id="ticketflow-events-root"></div>';
-        } else {
-            wp_die(__('No tienes permisos para acceder a esta página', 'wp-react-ticketflow-qr'));
+        if (!current_user_can('ticketflow_edit_events')) {
+            wp_die(__('No tienes permisos para acceder a esta página', 'ticketflow'));
         }
-        echo '</div>';
+        $this->render_app_container('ticketflow-events-root');
     }
 
     public function render_reports() {
-        echo '<div class="wrap ticketflow-reports">';
-        if (current_user_can('ticketflow_export_qr')) {
-            echo '<div id="ticketflow-reports-root"></div>';
-        } else {
-            wp_die(__('No tienes permisos para acceder a esta página', 'wp-react-ticketflow-qr'));
+        if (!current_user_can('ticketflow_export_qr')) {
+            wp_die(__('No tienes permisos para acceder a esta página', 'ticketflow'));
         }
+        $this->render_app_container('ticketflow-reports-root');
+    }
+
+    private function render_app_container($id) {
+        echo '<div class="wrap ticketflow-app">';
+        echo '<div id="' . esc_attr($id) . '"></div>';
         echo '</div>';
     }
 }
