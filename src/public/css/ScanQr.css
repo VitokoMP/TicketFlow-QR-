@@ -1,165 +1,138 @@
-/* ==================== */
-/* VARIABLES & DEFAULTS */
-/* ==================== */
+/* ========================= */
+/* VARIABLES Y ESTILOS BASE   */
+/* ========================= */
 :root {
-  --primary-color: #FFD700;
-  --primary-dark: #000000;
-  --secondary-color: #4CAF50;
-  --text-light: #ffffff;
-  --bg-dark: #000;
-  --bg-gray: #333;
-  --border-gray: #555;
+  --primary-color: #FFD700; /* Amarillo */
+  --primary-dark: #000000;  /* Negro */
+  --bg-gray: #333;          /* Gris oscuro */
+  --text-light: #ffffff;    /* Blanco */
+  --border-gray: #555;      /* Gris medio */
   --transition-speed: 0.3s ease;
 }
 
-/* ==================== */
-/* BASE STYLES */
-/* ==================== */
-body {
-  margin: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-/* ==================== */
-/* NAVIGATION BAR */
-/* ==================== */
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 20px;
-  background-color: var(--primary-dark);
-  color: var(--primary-color);
-}
-
-.logo {
-  font-size: 1.5rem;
-  font-weight: bold;
-}
-
-.user-settings {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.user-settings span {
-  cursor: default;
-  color: var(--primary-color);
-}
-
-/* Navigation Links */
-.nav {
+/* ========================= */
+/* BOTÓN SINCRONIZAR AJUSTES */
+/* ========================= */
+.sync-button-container {
   display: flex;
   justify-content: center;
-  background-color: var(--primary-dark);
-  padding: 10px 0;
-  gap: 15px;
-  flex-wrap: wrap;
+  margin-top: 20px;
+  position: relative;
+  z-index: 15;
+  text-align: center;
 }
 
-.nav-link {
-  color: var(--primary-dark);
-  background-color: var(--primary-color);
+.sync-button {
+  background-color: var(--primary-dark);
+  color: var(--primary-color);
+  border: 2px solid var(--primary-color);
   padding: 12px 24px;
   border-radius: 8px;
   font-weight: bold;
-  text-decoration: none;
   text-transform: uppercase;
   letter-spacing: 1px;
-  border: 2px solid var(--primary-color);
+  cursor: pointer;
   transition: all var(--transition-speed);
   box-shadow: 0 4px 6px rgba(255, 215, 0, 0.2);
+  position: relative;
+  overflow: hidden;
 }
 
-.nav-link:hover {
-  background-color: var(--primary-dark);
-  color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 12px rgba(255, 215, 0, 0.3);
+.sync-button:disabled {
+  background-color: var(--primary-color);
+  color: var(--primary-dark);
+  cursor: not-allowed;
+  opacity: 0.8;
+  box-shadow: none;
+  transform: none !important;
 }
 
-.active-link {
-  background-color: var(--primary-dark);
-  color: var(--primary-color);
-  border: 2px solid var(--primary-color);
-}
-
-/* Logout Button */
-.logout-button {
-  background: transparent;
-  border: 2px solid var(--primary-color);
-  color: var(--primary-color);
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  transition: all var(--transition-speed);
-}
-
-.logout-button:hover {
+.sync-button:hover:not(:disabled) {
   background-color: var(--primary-color);
   color: var(--primary-dark);
   transform: translateY(-2px);
   box-shadow: 0 6px 12px rgba(255, 215, 0, 0.3);
 }
 
-/* ==================== */
-/* SCANNER CONTAINER */
-/* ==================== */
-.scanner-container {
-  position: relative;
+/* Efecto de brillo al pasar el mouse */
+.sync-button::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
   width: 100%;
-  height: 100vh;
-  background: var(--primary-dark);
-  color: var(--text-light);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px;
-  box-sizing: border-box;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: left var(--transition-speed);
 }
 
-.scanner-title {
-  color: var(--text-light);
-  margin-bottom: 20px;
-  text-align: center;
-  font-size: 1.5rem;
+.sync-button:hover:not(:disabled)::after {
+  left: 100%;
 }
 
-/* ================== */
-/* EVENT SELECTOR */
-/* ================== */
+/* ========================= */
+/* SELECT EVENTO (DROPDOWN)  */
+/* ========================= */
 .event-selector-container {
   width: 100%;
   max-width: 500px;
-  margin-bottom: 20px;
+  margin: 0 auto 20px;
+  position: relative;
+  z-index: 20;
 }
 
 .event-selector {
   width: 100%;
-  padding: 12px;
+  padding: 12px 15px;
   border-radius: 8px;
   background: var(--bg-gray);
   color: var(--text-light);
   border: 1px solid var(--border-gray);
   font-size: 1rem;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23FFD700'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  cursor: pointer;
 }
 
-/* ============= */
-/* SCANNER AREA */
-/* ============= */
+.event-selector:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+/* ========================= */
+/* CONTENEDOR ESCÁNER        */
+/* ========================= */
+.scanner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 500px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 10;
+}
+
 .scanner-wrapper {
   position: relative;
   width: 100%;
   max-width: 500px;
-  aspect-ratio: 1/1;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
   border-radius: 12px;
   background: var(--primary-dark);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  margin: 0 auto;
+  z-index: 1;
 }
 
 .qr-scanner {
@@ -168,6 +141,126 @@ body {
   object-fit: cover;
 }
 
+/* ========================= */
+/* ESTILO OVERLAY DE VALIDACIÓN */
+/* ========================= */
+.overlay-result {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  width: 220px;
+  min-height: 220px;
+  text-align: center;
+  user-select: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border: none;
+}
+
+.overlay-result.success {
+  border-top: 4px solid limegreen;
+}
+
+.overlay-result.error {
+  border-top: 4px solid crimson;
+}
+
+.checkmark, .cross {
+  font-size: 3.5rem;
+  animation: bounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  margin-bottom: 0.8rem;
+}
+
+.overlay-result p {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+/* ========================= */
+/* LOADING DE SINCRONIZACIÓN */
+/* ========================= */
+.sync-loading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 1.5rem 2rem;
+  border-radius: 8px;
+  z-index: 100;
+  font-weight: bold;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.sync-loading::after {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: var(--primary-color);
+  animation: spin 1s linear infinite;
+  margin-top: 1rem;
+}
+
+/* ========================= */
+/* BLOQUEO DEL ESCÁNER       */
+/* ========================= */
+.scanner-locked {
+  filter: grayscale(80%);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* ========================= */
+/* ANIMACIONES               */
+/* ========================= */
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ========================= */
+/* EFECTO OVERLAY DE ESCANEO */
+/* ========================= */
 .scanner-overlay {
   position: absolute;
   top: 0;
@@ -176,16 +269,17 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 10;
 }
 
 .scan-frame {
   width: 70%;
   height: 70%;
-  border: 4px solid var(--text-light);
-  border-radius: 12px;
+  border: 3px solid white;
+  border-radius: 8px;
   position: relative;
 }
 
@@ -193,262 +287,61 @@ body {
 .scan-frame::after {
   content: '';
   position: absolute;
-  width: 40px;
-  height: 40px;
-  border: 4px solid var(--secondary-color);
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--primary-color);
 }
 
 .scan-frame::before {
-  top: -4px;
-  left: -4px;
+  top: -3px;
+  left: -3px;
   border-right: none;
   border-bottom: none;
 }
 
 .scan-frame::after {
-  bottom: -4px;
-  right: -4px;
+  bottom: -3px;
+  right: -3px;
   border-left: none;
   border-top: none;
 }
 
+/* Instrucciones dentro del overlay */
 .scan-instructions {
-  color: var(--text-light);
-  margin-top: 20px;
+  color: white;
+  margin-top: 1.5rem;
   font-size: 1.1rem;
-  text-align: center;
-  background: rgba(0,0,0,0.7);
-  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 0.5rem 1rem;
   border-radius: 20px;
+  user-select: none;
 }
 
-/* ===================== */
-/* VALIDATION OVERLAY */
-/* ===================== */
-.fullscreen-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.95);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.validation-content {
-  text-align: center;
-  color: var(--text-light);
-  padding: 24px;
-  max-width: 90%;
-  animation: fadeIn 0.5s ease;
-}
-
-.validation-icon {
-  width: 180px;
-  height: 180px;
-  margin-bottom: 24px;
-  animation: pulse 1.5s infinite;
-}
-
-.validation-title {
-  font-size: 2.8rem;
-  margin-bottom: 16px;
-  font-weight: bold;
-  text-transform: uppercase;
-}
-
-.validation-message {
-  font-size: 1.8rem;
-  margin-bottom: 24px;
-  max-width: 600px;
-  line-height: 1.4;
-}
-
-.attendee-info {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 16px;
-  border-radius: 12px;
-  margin-top: 24px;
-  font-size: 1.2rem;
-}
-
-.attendee-info p {
-  margin: 8px 0;
-}
-
-/* ============== */
-/* BUTTON STYLES */
-/* ============== */
-.button-base {
-  padding: 12px 24px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  transition: all var(--transition-speed);
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 4px 6px rgba(255, 215, 0, 0.2);
-}
-
-.sync-button,
-.view-tickets-button,
-.sync-sales-button,
-.nav-link,
-.logout-button {
-  composes: button-base;
-}
-
-.sync-button,
-.view-tickets-button {
-  background-color: var(--primary-dark);
-  color: var(--primary-color);
-  border: 2px solid var(--primary-color);
-}
-
-.sync-button:hover,
-.view-tickets-button:hover {
-  background-color: var(--primary-color);
-  color: var(--primary-dark);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 12px rgba(255, 215, 0, 0.3);
-}
-
-.sync-sales-button {
-  background-color: var(--primary-color);
-  color: var(--primary-dark);
-  border: 2px solid var(--primary-color);
-}
-
-.sync-sales-button:hover {
-  background-color: var(--primary-dark);
-  color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 12px rgba(255, 215, 0, 0.3);
-}
-
-.sync-button:disabled,
-.sync-button.inactive {
-  background-color: var(--primary-color);
-  color: var(--primary-dark);
-  border: 2px solid var(--primary-color);
-  cursor: not-allowed;
-  opacity: 0.8;
-}
-
-.sync-button:disabled:hover,
-.sync-button.inactive:hover {
-  background-color: var(--primary-dark);
-  color: var(--primary-color);
-}
-
-/* Button active states */
-.sync-button:active,
-.view-tickets-button:active,
-.sync-sales-button:active,
-.nav-link:active,
-.logout-button:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(255, 215, 0, 0.3);
-}
-
-/* Button shine effect */
-.sync-button::after,
-.view-tickets-button::after,
-.sync-sales-button::after,
-.nav-link::after,
-.logout-button::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    45deg,
-    transparent 25%,
-    rgba(255, 215, 0, 0.1) 50%,
-    transparent 75%
-  );
-  background-size: 400% 400%;
-  opacity: 0;
-  transition: opacity 0.5s ease, background-position 1s ease;
-}
-
-.sync-button:hover::after,
-.view-tickets-button:hover::after,
-.sync-sales-button:hover::after,
-.nav-link:hover::after,
-.logout-button:hover::after {
-  opacity: 1;
-  background-position: 100% 100%;
-  animation: shine 1.5s infinite;
-}
-
-/* ============ */
-/* ANIMATIONS */
-/* ============ */
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes shine {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 100% 50%; }
-}
-
-/* ============== */
-/* RESPONSIVE */
-/* ============== */
-@media (max-width: 768px) {
-  .sync-button,
-  .view-tickets-button,
-  .sync-sales-button,
-  .nav-link,
-  .logout-button {
+/* ========================= */
+/* MEDIA QUERIES PARA MOBILE */
+/* ========================= */
+@media (max-width: 600px) {
+  .sync-button {
     padding: 10px 20px;
     font-size: 0.9rem;
   }
-}
-
-@media (max-width: 600px) {
-  .header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .nav {
-    justify-content: flex-start;
-    gap: 10px;
-    padding: 5px 10px;
-  }
-
-  .validation-icon {
-    width: 120px;
-    height: 120px;
+  
+  .event-selector {
+    padding: 10px 15px;
+    font-size: 0.9rem;
   }
   
-  .validation-title {
-    font-size: 2rem;
+  .overlay-result {
+    width: 180px;
+    min-height: 180px;
+    padding: 1rem;
   }
   
-  .validation-message {
-    font-size: 1.4rem;
+  .checkmark, .cross {
+    font-size: 3rem;
   }
   
-  .attendee-info {
+  .overlay-result p {
     font-size: 1rem;
   }
 }
