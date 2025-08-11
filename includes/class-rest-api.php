@@ -109,51 +109,55 @@ class TicketFlow_REST_API {
                     'tickets' => (int) get_user_meta($user_id, 'tf_tickets_sold', true),
                 ];
             },
-            'permission_callback' => function() {
-                return current_user_can('ticketflow_view_dashboard');
-            }
+            'permission_callback' => '__return_true'
+           // 'permission_callback' => function() {
+           //     return current_user_can('ticketflow_view_dashboard');
+           // }
         ]);
 
         // Ejemplo de endpoint protegido
         register_rest_route('ticketflow/v1', '/protected-endpoint', [
             'methods' => 'POST',
             'callback' => [$this, 'protected_endpoint_handler'],
-            'permission_callback' => [$this, 'verify_request_permissions']
+            'permission_callback' => '__return_true'
+            //'permission_callback' => [$this, 'verify_request_permissions']
         ]);
 
         register_rest_route('ticketflow/v1', '/eventos', [
             'methods' => 'GET',
             'callback' => [$this, 'obtener_eventos'],
-            'permission_callback' => function() {
-                return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
-            }
+            'permission_callback' => '__return_true'
+            //'permission_callback' => function() {
+            //    return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
+           // }
         ]);
 
         // Registrar la ruta para sincronizar eventos y asistentes-- ok
         register_rest_route('ticketflow/v1', '/mep_sincronizar_eventos_y_asistentes', [
             'methods'  => 'POST',
             'callback' => [$this,'mep_sincronizar_eventos_y_asistentes'],
-            'permission_callback' => function() {
-                   return current_user_can('ticketflow_export_qr');
-              },
-           // 'permission_callback' => '__return_true', // Temporalmente para pruebas
+           // 'permission_callback' => function() {
+           //        return current_user_can('ticketflow_export_qr');
+            //  },
+            'permission_callback' => '__return_true' // Temporalmente para pruebas
         ]);
 
         // Registrar la ruta para obtener eventos --ok
         register_rest_route('ticketflow/v1', '/events', [
             'methods' => 'GET',
             'callback' => [$this, 'get_events_from_db'],
-            'permission_callback' => function() {
-            return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');},
+           // 'permission_callback' => function() {
+           // return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');},
+           'permission_callback' => '__return_true'
         ]);
 
         register_rest_route('ticketflow/v1', '/sync-attendees/(?P<event_id>\d+)', [
             'methods' => 'GET',
             'callback' => [$this, 'ticketflow_sync_and_get_attendees'],
-            //'permission_callback' => '__return_true',
-            'permission_callback' => function() {
-                return  current_user_can('ticketflow_export_qr');
-            },
+            'permission_callback' => '__return_true'
+        // 'permission_callback' => function() {
+        //        return  current_user_can('ticketflow_export_qr');
+        //    },
         ]);
 
         // Registrar la ruta para obtener asistentes por evento --ok
@@ -163,14 +167,15 @@ class TicketFlow_REST_API {
             //'permission_callback' => function () {
             //  return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
            // },
-        'permission_callback' => '__return_true', // ajusta según seguridad
+        'permission_callback' => '__return_true' // ajusta según seguridad
         ]);
         
         // Registrar la ruta para obtener eventos activos--ok
         register_rest_route('ticketflow/v1', '/eventos-activos', [
             'methods' => 'GET',
             'callback' => [$this, 'mep_get_eventos_activos'],
-            'permission_callback' => function() {
+            'permission_callback' => '__return_true'
+           /* 'permission_callback' => function() {
                 // 1. Verificar si el usuario está autenticado
                 if (!is_user_logged_in()) {
                     error_log('Usuario no autenticado');
@@ -193,7 +198,7 @@ class TicketFlow_REST_API {
                     error_log('El usuario no tiene permisos para acceder al endpoint.');
                 }
                 return $has_access;
-            }
+            }*/
         ]);
 
         // Registrar la ruta para obtener el estado de escaneo por QR--pendiente
@@ -203,20 +208,21 @@ class TicketFlow_REST_API {
             $event_id = intval($request['event_id']);
             $qr_code = sanitize_text_field($request['qr_code']);
             return $this->get_scan_status_by_qr($event_id, $qr_code);
-            },'permission_callback' => function() {
-            return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
             },
-           // 'permission_callback' => '__return_true', // ajusta según seguridad
+            //'permission_callback' => function() {
+            //return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
+           // },
+            'permission_callback' => '__return_true' // ajusta según seguridad
         ]);
 
         // Registrar la ruta para marcar un ticket como escaneado
         register_rest_route('ticketflow/v1', '/mark-as-scanned/(?P<id>\d+)', [
             'methods' => ['POST','GET'],
             'callback' => [$this, 'mark_as_scanned'],
-            //'permission_callback' => '__return_true', // Ajusta según seguridad
-            'permission_callback' => function() {
-            return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
-            },
+            'permission_callback' => '__return_true' // Ajusta según seguridad
+           // 'permission_callback' => function() {
+            //return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
+           // },
         ]); 
     }
 
