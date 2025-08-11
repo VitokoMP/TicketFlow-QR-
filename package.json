@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
+    "@wordpress/api-fetch": "^7.28.0",
     "axios": "^1.7.7",
     "file-saver": "^2.0.5",
     "html5-qrcode": "^2.3.8",
@@ -29,12 +30,10 @@
     "webpack-cli": "^5.1.4"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "cross-env NODE_ENV=production webpack",
-    "start": "cross-env NODE_ENV=development webpack --watch",
-    "dev": "cross-env NODE_ENV=development webpack",
-    "wp-build": "cross-env NODE_ENV=production webpack --output-path=./build",
-    "wp-start": "cross-env NODE_ENV=development webpack --watch --output-path=./build",
+    "dev": "cross-env NODE_ENV=development webpack --output-path=./dist --watch",
+    "build": "cross-env NODE_ENV=production webpack --output-path=./build",
+    "wp-build": "npm run build && npm run generate-asset",
+    "wp-dev": "npm run dev && npm run generate-asset",
     "generate-asset": "node generate-asset.js"
   }
 }

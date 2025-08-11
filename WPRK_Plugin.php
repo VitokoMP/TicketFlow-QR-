@@ -81,3 +81,30 @@ register_deactivation_hook(__FILE__, ['TicketFlow_Activator', 'deactivate']);
 add_action('plugins_loaded', function() {
     TicketFlow_Core::instance();
 });
+
+add_action( 'admin_enqueue_scripts', function() {
+    $asset_file = include plugin_dir_path(__FILE__) . 'build/index.asset.php';
+
+    wp_enqueue_script(
+        'ticketflow-qr',
+        plugins_url('build/bundle.js', __FILE__),
+        $asset_file['dependencies'],
+        $asset_file['version'],
+        true
+    );
+
+    wp_localize_script( 'ticketflow-qr', 'ticketflowQR', [
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce'    => wp_create_nonce('ticketflow_nonce'),
+    ]);
+});
+
+// Acción AJAX (admin)
+add_action( 'wp_ajax_ticketflow_action', function() {
+    check_ajax_referer( 'ticketflow_nonce' );
+
+    wp_send_json_success([
+        'message' => 'AJAX funcionando ✅',
+        'time' => current_time('mysql')
+    ]);
+});
