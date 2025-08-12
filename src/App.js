@@ -12,7 +12,6 @@ const App = () => (
     <br></br>
     <Routes>
         <Route path="/" element={<Base />} />
-        <Route path="/EventInfo" element={<EventoInfo />} />
         <Route path="*" element={<p>There's nothing here: 404!</p>} />
     </Routes>
     <br></br>

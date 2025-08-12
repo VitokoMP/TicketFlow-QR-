@@ -337,8 +337,8 @@ console.log("Eventos recibidos del contexto:", eventos);
       const validationConfig = {
         valid: { icon: checkImg, title: "TICKET VÁLIDO", color: "#4CAF50" },
         error: { icon: crossImg, title: "ERROR", color: "#f44336" },
-        mismatch: { icon: warningImg, title: "EVENTO INCORRECTO", color: "#FF9800" },
-        "ya-validado": { icon: warningImg, title: "YA REGISTRADO", color: "#FFC107" }
+        mismatch: { icon: warningImg, title: "TICKET NO PERTENECE A EVENTO", color: "#FF9800" },
+        "ya-validado": { icon: warningImg, title: "TICKET YA REGISTRADO", color: "#FFC107" }
       };
 
       const config = validationConfig[status] || validationConfig.error;

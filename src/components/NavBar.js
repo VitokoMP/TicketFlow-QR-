@@ -15,7 +15,7 @@ const NavBar = () => {
       </header>
 
       <nav className="nav">
-        <NavLink 
+       {/* <NavLink 
           to="/" 
           className={({ isActive }) => (isActive ? "nav-link active-link" : "nav-link")}
         >
@@ -27,15 +27,14 @@ const NavBar = () => {
           className={({ isActive }) => (isActive ? "nav-link active-link" : "nav-link")}
         >
           Sincronizar Ventas
-        </NavLink>
+        </NavLink>*/}
 
-        {/* Futuro: escanear QR */}
-        {/* <NavLink 
-          to="/scan" 
+         <NavLink 
+          to="/" 
           className={({ isActive }) => (isActive ? "nav-link active-link" : "nav-link")}
         >
           Escanear QR
-        </NavLink> */}
+        </NavLink> 
       </nav>
     </>
   );
