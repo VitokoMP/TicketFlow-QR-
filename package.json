@@ -29,17 +29,9 @@
     "webpack-cli": "^5.1.4"
   },
   "scripts": {
-<<<<<<< HEAD
-    "dev": "cross-env NODE_ENV=development webpack --output-path=./dist --watch",
-    "build": "cross-env NODE_ENV=production webpack --output-path=./build",
-    "wp-build": "npm run build && npm run generate-asset",
-    "wp-dev": "npm run dev && npm run generate-asset",
-    "generate-asset": "node generate-asset.js"
-=======
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "cross-env NODE_ENV=production webpack",
-    "start": "cross-env NODE_ENV=development webpack --watch",
-    "dev": "cross-env NODE_ENV=development webpack"
->>>>>>> 828ac1718f91c0dde8fbf07ccedfb108e42839a7
-  }
+  "dev": "cross-env NODE_ENV=development webpack --watch --env development",
+  "build": "cross-env NODE_ENV=production webpack --env production",
+  "wp-build": "npm run build && node generate-asset.js",
+  "generate-asset": "node generate-asset.js"
+}
 }
