@@ -147,15 +147,43 @@ console.log("Eventos recibidos del contexto:", eventos);
       }
     }
 
-  const handleScanSuccess = useCallback(async (decodedText) => { 
+    async function markTicketAsScanned(attendeeId) {
+  try {
+    const response = await fetch(`/wp-json/ticketflow/v1/mark-as-scanned/${attendeeId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
+    if (!response.ok) {
+      const errorData = await response.json();
+      return { success: false, mensaje: errorData.mensaje || 'Error desconocido', status: errorData.status || 'error' };
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success,
+      mensaje: data.mensaje,
+      status: data.status,
+      asistente: data.asistente,
+    };
+  } catch (error) {
+    console.error('Error al marcar ticket escaneado:', error);
+    return { success: false, mensaje: 'Error de conexión', status: 'error' };
+  }
+}
+
+
+   const handleScanSuccess = useCallback(async (decodedText) => {
   if (scanningPausedRef.current) return;
-    console.log("QR detectado:", decodedText);
+
+  console.log("QR detectado:", decodedText);
 
   const normalizedQrText = normalizeUrl(decodedText);
   const ticketCode = extractTicketCode(normalizedQrText);
 
-  if (ticketCode === lastScannedRef.current) return; 
+  if (ticketCode === lastScannedRef.current) return;
 
   scanningPausedRef.current = true;
   lastScannedRef.current = ticketCode;
@@ -167,32 +195,105 @@ console.log("Eventos recibidos del contexto:", eventos);
   }));
 
   try {
-    const result = await ScannerAPI.checkTicketStatus(eventoSeleccionado.event_id, ticketCode);
-        console.log("Resultado backend:", result); // <-- Aquí imprimes la respuesta del backend
-
-      setScanState(prev => ({
-        ...prev,
-        validation: result.valid
-          ? { status: "valid", mensaje: "Entrada válida", asistente: result.attendee }
-          : { status: "error", mensaje: "QR inválido" },
-        showOverlay: true,
-      }));
-    } catch {
-      setScanState(prev => ({
-        ...prev,
-        validation: { status: "error", mensaje: "Error validando el código" },
-        showOverlay: true,
-      }));
-    } finally {
-      timeoutRef.current = setTimeout(() => {
-          console.log("Timeout para ocultar overlay ejecutado");
-
-        qrScanner.current?.resume();
-        scanningPausedRef.current = false;
-        setScanState(prev => ({ ...prev, scanningPaused: false, showOverlay: false }));
-      }, SCAN_DELAY);
+    // Pausar el escáner para evitar lecturas dobles
+    try {
+      await qrScanner.current.pause();
+    } catch (e) {
+      console.warn("No se pudo pausar el escáner:", e.message);
     }
-  }, [eventoSeleccionado]);
+
+    // Primero chequeamos el estado del ticket en backend
+    const checkResult = await ScannerAPI.checkTicketStatus(eventoSeleccionado.event_id, ticketCode);
+    console.log("Resultado backend checkTicketStatus:", checkResult);
+
+    if (!checkResult.success) {
+      // Si no es válido, mostramos error y listo
+      setScanState(prev => ({
+        ...prev,
+        validation: { status: "error", mensaje: checkResult.mensaje || "QR inválido" },
+        showOverlay: true,
+      }));
+    } else {
+      // Si está pendiente, intentamos marcar como escaneado
+      if (checkResult.status === "PENDING") {
+        const markResult = await ScannerAPI.markAsScanned(checkResult.asistente.id);
+        console.log("Resultado marcado como escaneado:", markResult);
+
+        if (markResult.success && markResult.status === "UPDATED") {
+          setScanState(prev => ({
+            ...prev,
+            validation: { status: "valid", mensaje: "Entrada válida", asistente: markResult.asistente },
+            showOverlay: true,
+          }));
+        } else if (markResult.status === "ALREADY_SCANNED") {
+          setScanState(prev => ({
+            ...prev,
+            validation: { status: "ya-validado", mensaje: markResult.mensaje, asistente: markResult.asistente },
+            showOverlay: true,
+          }));
+        } else {
+          setScanState(prev => ({
+            ...prev,
+            validation: { status: "error", mensaje: markResult.mensaje || "Error marcando como escaneado" },
+            showOverlay: true,
+          }));
+        }
+      } else if (checkResult.status === "ALREADY_SCANNED") {
+        setScanState(prev => ({
+          ...prev,
+          validation: { status: "ya-validado", mensaje: checkResult.mensaje, asistente: checkResult.asistente },
+          showOverlay: true,
+        }));
+      } else if (checkResult.status === "MISMATCH") {
+        setScanState(prev => ({
+          ...prev,
+          validation: { status: "mismatch", mensaje: checkResult.mensaje, asistente: checkResult.asistente },
+          showOverlay: true,
+        }));
+      } else {
+        // Otros casos
+        setScanState(prev => ({
+          ...prev,
+          validation: { status: "error", mensaje: "Código no válido" },
+          showOverlay: true,
+        }));
+      }
+    }
+  } catch (error) {
+    console.error("Error en validación:", error);
+    setScanState(prev => ({
+      ...prev,
+      validation: { status: "error", mensaje: "Error validando el código" },
+      showOverlay: true,
+    }));
+  } finally {
+    timeoutRef.current = setTimeout(async () => {
+      if (scanningPausedRef.current) {
+        try {
+          // Reanudar escáner haciendo stop + start para evitar problemas con resume()
+          await qrScanner.current.stop();
+
+          const config = {
+            fps: 10,
+            qrbox: 250,
+            formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+            disableFlip: false,
+          };
+          await qrScanner.current.start(
+            { facingMode: "environment" },
+            config,
+            handleScanSuccess,
+            errMsg => {}
+          );
+        } catch (e) {
+          console.warn("No se pudo reanudar el escáner:", e.message || e);
+        }
+        scanningPausedRef.current = false;
+      }
+      setScanState(prev => ({ ...prev, scanningPaused: false, showOverlay: false }));
+    }, SCAN_DELAY);
+  }
+}, [eventoSeleccionado]);
 
   // Limpieza del timeout al desmontar
   useEffect(() => {
