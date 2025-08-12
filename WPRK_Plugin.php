@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.3.3
+ * Version: 1.3.4 lite
  * License: GPL2
  * Text-Domain: wp-react-ticketflow-qr 
  */
@@ -80,69 +80,4 @@ register_deactivation_hook(__FILE__, ['TicketFlow_Activator', 'deactivate']);
 // Inicializar el plugin
 add_action('plugins_loaded', function() {
     TicketFlow_Core::instance();
-});
-
-add_action('admin_enqueue_scripts', function($hook) {
-    // Solo cargar en páginas del plugin
-    $ticketflow_pages = [
-        'toplevel_page_ticketflow',
-        'ticketflow_page_ticketflow-eventos',
-        'ticketflow_page_ticketflow-reportes',
-        'ticketflow_page_ticketflow-escanear'
-    ];
-    
-    if (!in_array($hook, $ticketflow_pages)) {
-        return;
-    }
-
-    $asset_path = plugin_dir_path(__FILE__) . 'build/index.asset.php';
-    
-    if (!file_exists($asset_path)) {
-        error_log('TicketFlow QR: Archivo de assets no encontrado');
-        return;
-    }
-
-    $asset = include $asset_path;
-    
-    // Añadir heartbeat como dependencia
-    $asset['dependencies'][] = 'heartbeat';
-
-    wp_enqueue_script(
-        'ticketflow-admin',
-        plugins_url('build/bundle.js', __FILE__),
-        $asset['dependencies'],
-        $asset['version'],
-        true
-    );
-
-    wp_localize_script('ticketflow-admin', 'ticketflowQR', [
-        'ajax_url' => admin_url('admin-ajax.php'),
-        'rest_url' => rest_url('ticketflow/v1/'),
-        'nonce' => wp_create_nonce('wp_rest'),
-        'user' => [
-            'id' => get_current_user_id(),
-            'roles' => wp_get_current_user()->roles
-        ]
-    ]);
-
-    // Cargar estilos si existen
-    $css_path = plugin_dir_path(__FILE__) . 'src/public/css/admin.css';
-    if (file_exists($css_path)) {
-        wp_enqueue_style(
-            'ticketflow-admin-css',
-            plugins_url('src/public/css/admin.css', __FILE__),
-            [],
-            filemtime($css_path)
-        );
-    }
-});
-
-// Acción AJAX (admin)
-add_action( 'wp_ajax_ticketflow_action', function() {
-    check_ajax_referer( 'ticketflow_nonce' );
-
-    wp_send_json_success([
-        'message' => 'AJAX funcionando ✅',
-        'time' => current_time('mysql')
-    ]);
 });

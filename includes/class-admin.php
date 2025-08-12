@@ -120,55 +120,45 @@ class TicketFlow_Admin {
     }
 
     public function enqueue_scripts($hook) {
-    $ticketflow_pages = [
-        'toplevel_page_ticketflow',
-        'ticketflow_page_ticketflow-eventos',
-        'ticketflow_page_ticketflow-reportes',
-        'ticketflow_page_ticketflow-escanear'
-    ];
-    
-    if (!in_array($hook, $ticketflow_pages)) {
-        return;
-    }
+        $ticketflow_pages = [
+            'toplevel_page_ticketflow',
+            'ticketflow_page_ticketflow-eventos',
+            'ticketflow_page_ticketflow-reportes',
+            'ticketflow_page_ticketflow-escanear'
+        ];
+        
+        if (!in_array($hook, $ticketflow_pages)) {
+            return;
+        }
 
-    // Define modo dev o producción — aquí puedes usar WP_DEBUG o tu propia constante
-    $is_dev = defined('WP_DEBUG') && WP_DEBUG === true;
+        wp_enqueue_script(
+            'ticketflow-admin-js',
+            TICKETFLOW_URL . 'dist/bundle.js',
+            ['wp-element', 'wp-api-fetch'],
+            filemtime(TICKETFLOW_PATH . 'dist/bundle.js'),
+            true
+        );
 
-    // Elige carpeta según modo
-    $dir = $is_dev ? 'dist' : 'build';
-
-    // Ruta completa al archivo para obtener version (filemtime)
-    $script_path = TICKETFLOW_PATH . $dir . '/bundle.js';
-    wp_enqueue_script('heartbeat'); // Primero esto
-    wp_enqueue_script(
-        'ticketflow-admin-js',
-        TICKETFLOW_URL . $dir . '/bundle.js',
-        ['wp-element', 'wp-api-fetch'],
-        filemtime($script_path), // cache busting por fecha de archivo
-        true
-    );
-
-    wp_localize_script('ticketflow-admin-js', 'ticketflowData', [
-        'apiUrl' => esc_url_raw(rest_url('ticketflow/v1')),
-        'nonce' => wp_create_nonce('wp_rest'),
-        'user' => [
-            'id' => get_current_user_id(),
-            'role' => $this->get_user_role(),
-            'can' => [
-                'scan' => current_user_can('ticketflow_scan_qr'),
-                'export' => current_user_can('ticketflow_export_qr'),
-                'manage' => current_user_can('ticketflow_edit_events')
-            ]
-        ],
-        'currentPage' => $this->get_current_page($hook),
-        'wpRestConfig' => [
-            'root' => esc_url_raw(rest_url()),
+        wp_localize_script('ticketflow-admin-js', 'ticketflowData', [
+            'apiUrl' => esc_url_raw(rest_url('ticketflow/v1')),
             'nonce' => wp_create_nonce('wp_rest'),
-            'versionString' => 'wp/v2/'
-        ]
-    ]);
-}
-
+            'user' => [
+                'id' => get_current_user_id(),
+                'role' => $this->get_user_role(),
+                'can' => [
+                    'scan' => current_user_can('ticketflow_scan_qr'),
+                    'export' => current_user_can('ticketflow_export_qr'),
+                    'manage' => current_user_can('ticketflow_edit_events')
+                ]
+            ],
+            'currentPage' => $this->get_current_page($hook),
+            'wpRestConfig' => [
+                'root' => esc_url_raw(rest_url()),
+                'nonce' => wp_create_nonce('wp_rest'),
+                'versionString' => 'wp/v2/'
+            ]
+        ]);
+    }
 
     private function get_user_role() {
         $user = wp_get_current_user();

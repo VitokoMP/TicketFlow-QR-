@@ -1,17 +1,15 @@
 const path = require('path');
 const TerserPlugin = require('terser-webpack-plugin');
 
-module.exports = (env) => ({
+module.exports = {
   entry: './src/index.js',
   output: {
-    path: env.production 
-      ? path.resolve(__dirname, 'build')
-      : path.resolve(__dirname, 'build'),
-    filename: 'bundle.js',
+    path: path.resolve(__dirname, 'dist'),
+    filename: 'bundle.js', // Nombre del archivo generado
     clean: true,
   },
   optimization: {
-    minimize: env.production,
+    minimize: true,
     minimizer: [new TerserPlugin()],
   },
   module: {
@@ -21,7 +19,7 @@ module.exports = (env) => ({
         use: ['style-loader', 'css-loader'],
       },
       {
-        test: /\.jsx?$/,
+        test: /\.js$/,
         exclude: /node_modules/,
         use: {
           loader: 'babel-loader',
@@ -31,17 +29,13 @@ module.exports = (env) => ({
         },
       },
       {
-        test: /\.(png|jpe?g|gif|svg)$/i,
+        test: /\.(png|jpe?g|gif|svg)$/i, // Añade manejo de imágenes
         type: 'asset/resource',
       },
     ],
   },
   resolve: {
     extensions: ['.js', '.jsx'],
-    alias: {
-      '@components': path.resolve(__dirname, 'src/components'),
-      '@context': path.resolve(__dirname, 'src/context')
-    }
   },
-  mode: env.production ? 'production' : 'development',
-});
+  mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+};

@@ -1,18 +1,12 @@
-/* ========================= */
-/* VARIABLES Y ESTILOS BASE   */
-/* ========================= */
 :root {
-  --primary-color: #FFD700; /* Amarillo */
-  --primary-dark: #000000;  /* Negro */
-  --bg-gray: #333;          /* Gris oscuro */
-  --text-light: #ffffff;    /* Blanco */
-  --border-gray: #555;      /* Gris medio */
+  --primary-color: #FFD700;
+  --primary-dark: #000;
+  --bg-gray: #333;
+  --text-light: #fff;
+  --border-gray: #555;
   --transition-speed: 0.3s ease;
 }
 
-/* ========================= */
-/* BOTÓN SINCRONIZAR AJUSTES */
-/* ========================= */
 .sync-button-container {
   display: flex;
   justify-content: center;
@@ -37,7 +31,6 @@
   position: relative;
   overflow: hidden;
 }
-
 .sync-button:disabled {
   background-color: var(--primary-color);
   color: var(--primary-dark);
@@ -46,15 +39,12 @@
   box-shadow: none;
   transform: none !important;
 }
-
 .sync-button:hover:not(:disabled) {
   background-color: var(--primary-color);
   color: var(--primary-dark);
   transform: translateY(-2px);
   box-shadow: 0 6px 12px rgba(255, 215, 0, 0.3);
 }
-
-/* Efecto de brillo al pasar el mouse */
 .sync-button::after {
   content: '';
   position: absolute;
@@ -62,30 +52,19 @@
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.2),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
   transition: left var(--transition-speed);
 }
-
 .sync-button:hover:not(:disabled)::after {
   left: 100%;
 }
 
-/* ========================= */
-/* SELECT EVENTO (DROPDOWN)  */
-/* ========================= */
 .event-selector-container {
-  width: 100%;
   max-width: 500px;
   margin: 0 auto 20px;
   position: relative;
   z-index: 20;
 }
-
 .event-selector {
   width: 100%;
   padding: 12px 15px;
@@ -95,23 +74,17 @@
   border: 1px solid var(--border-gray);
   font-size: 1rem;
   appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
   background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23FFD700'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
   background-repeat: no-repeat;
   background-position: right 12px center;
   background-size: 16px;
   cursor: pointer;
 }
-
 .event-selector:focus {
   outline: none;
   border-color: var(--primary-color);
 }
 
-/* ========================= */
-/* CONTENEDOR ESCÁNER        */
-/* ========================= */
 .scanner-content {
   display: flex;
   flex-direction: column;
@@ -121,45 +94,39 @@
   position: relative;
   z-index: 10;
 }
-
 .scanner-wrapper {
   position: relative;
   width: 100%;
   max-width: 500px;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 1/1;
   overflow: hidden;
   border-radius: 12px;
   background: var(--primary-dark);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
   margin: 0 auto;
   z-index: 1;
 }
-
 .qr-scanner {
   width: 100%;
-  max-width: 400px; /* Ajusta según tu diseño */
+  max-width: 400px;
   height: auto;
-  aspect-ratio: 16 / 9; /* Mantiene la proporción */
+  aspect-ratio: 16/9;
   margin: 0 auto;
 }
-
 .qr-scanner video {
   width: 100% !important;
   height: auto !important;
   object-fit: cover;
 }
 
-/* ========================= */
-/* ESTILO OVERLAY DE VALIDACIÓN */
-/* ========================= */
 .overlay-result {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.8);
   animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
+  background: rgba(0,0,0,0.9);
+  color: #fff;
   padding: 1.5rem;
   border-radius: 12px;
   display: flex;
@@ -171,40 +138,32 @@
   min-height: 220px;
   text-align: center;
   user-select: none;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  border: none;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
-
 .overlay-result.success {
   border-top: 4px solid limegreen;
 }
-
 .overlay-result.error {
   border-top: 4px solid crimson;
 }
-
 .checkmark, .cross {
   font-size: 3.5rem;
   animation: bounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   margin-bottom: 0.8rem;
 }
-
 .overlay-result p {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 500;
 }
 
-/* ========================= */
-/* LOADING DE SINCRONIZACIÓN */
-/* ========================= */
 .sync-loading {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.85);
-  color: white;
+  background: rgba(0,0,0,0.85);
+  color: #fff;
   padding: 1.5rem 2rem;
   border-radius: 8px;
   z-index: 100;
@@ -213,143 +172,141 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
-
 .sync-loading::after {
   content: '';
   display: block;
   width: 24px;
   height: 24px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
+  border: 3px solid rgba(255,255,255,0.3);
   border-radius: 50%;
   border-top-color: var(--primary-color);
   animation: spin 1s linear infinite;
   margin-top: 1rem;
 }
 
-/* ========================= */
-/* BLOQUEO DEL ESCÁNER       */
-/* ========================= */
 .scanner-locked {
   filter: grayscale(80%);
   opacity: 0.8;
   pointer-events: none;
 }
 
-/* ========================= */
-/* ANIMACIONES               */
-/* ========================= */
 @keyframes pop-in {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.8);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
+  0% {opacity: 0; transform: translate(-50%, -50%) scale(0.8);}
+  100% {opacity: 1; transform: translate(-50%, -50%) scale(1);}
 }
-
 @keyframes bounce {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.15);
-  }
+  0%,100% {transform: scale(1);}
+  50% {transform: scale(1.15);}
 }
-
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to {transform: rotate(360deg);}
 }
 
-/* ========================= */
-/* EFECTO OVERLAY DE ESCANEO */
-/* ========================= */
 .scanner-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0,0,0,0.4);
   z-index: 10;
 }
 
 .scan-frame {
   width: 70%;
   height: 70%;
-  border: 3px solid white;
+  border: 3px solid #fff;
   border-radius: 8px;
   position: relative;
 }
-
 .scan-frame::before,
 .scan-frame::after {
   content: '';
   position: absolute;
-  width: 30px;
-  height: 30px;
+  width: 30px; height: 30px;
   border: 3px solid var(--primary-color);
 }
-
 .scan-frame::before {
-  top: -3px;
-  left: -3px;
+  top: -3px; left: -3px;
   border-right: none;
   border-bottom: none;
 }
-
 .scan-frame::after {
-  bottom: -3px;
-  right: -3px;
+  bottom: -3px; right: -3px;
   border-left: none;
   border-top: none;
 }
 
-/* Instrucciones dentro del overlay */
 .scan-instructions {
-  color: white;
+  color: #fff;
   margin-top: 1.5rem;
   font-size: 1.1rem;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0,0,0,0.7);
   padding: 0.5rem 1rem;
   border-radius: 20px;
   user-select: none;
 }
 
-/* ========================= */
-/* MEDIA QUERIES PARA MOBILE */
-/* ========================= */
 @media (max-width: 600px) {
   .sync-button {
     padding: 10px 20px;
     font-size: 0.9rem;
   }
-  
   .event-selector {
     padding: 10px 15px;
     font-size: 0.9rem;
   }
-  
   .overlay-result {
     width: 180px;
     min-height: 180px;
     padding: 1rem;
   }
-  
   .checkmark, .cross {
     font-size: 3rem;
   }
-  
   .overlay-result p {
     font-size: 1rem;
   }
+}
+#qr-reader {
+  width: 300px;
+  height: 300px;
+}
+#qr-reader,
+.qr-scanner {
+  border-radius: 12px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 400px;
+  position: relative;
+}
+.scanner-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--primary-dark);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  margin: 0 auto;
+  z-index: 1;
+}
+
+/* Marco visible para zona de escaneo */
+.scan-frame-overlay {
+  position: absolute;
+  top: 15%;
+  left: 15%;
+  width: 70%;
+  height: 70%;
+  border: 3px solid var(--primary-color);
+  border-radius: 10px;
+  pointer-events: none; /* para que no interfiera con el video */
+  box-sizing: border-box;
+  z-index: 10;
 }

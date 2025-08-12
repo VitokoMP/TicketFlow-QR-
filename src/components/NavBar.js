@@ -1,26 +1,16 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import './NavBar.css';
-import { useTicketFlowAPI } from "../hooks/useTicketFlowApi";
 
 const NavBar = () => {
-    const { response, loading, error } = useTicketFlowAPI('ticketflow_action');
-
-  if (loading) return <p>Cargando...</p>;
-  if (error) return <p>Error: {error.message}</p>;
- 
   return (
     <>
       <header className="header">
         <div className="logo">🎟️ TicketFlow</div>
 
         <div className="user-settings">
-          <span>👤 Usuario</span> 
-          <div>
-            {loading && <p>Cargando...</p>}
-            {error && <p>Error: {error.message}</p>}
-            {response && <pre>{JSON.stringify(response, null, 2)}</pre>}
-          </div>
+          <span>👤 Usuario</span>
+          {/* En futuro: <button onClick={logout}>Cerrar sesión</button> */}
         </div>
       </header>
 

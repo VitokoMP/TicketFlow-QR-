@@ -19,6 +19,7 @@ import '../public/css/ScanQR.css';
       setLoading,
       selectEvento,
     } = useEvento();
+console.log("Eventos recibidos del contexto:", eventos);
 
     const [scanState, setScanState] = useState({
       cameraActive: false,
@@ -43,7 +44,10 @@ import '../public/css/ScanQR.css';
       return;
     }
 
-    const config = { /* config igual */ };
+    const config = {  fps: 10,              // frames por segundo, equilibrio entre rapidez y CPU
+  qrbox: 250,           // tamaño cuadrado en px del área donde busca el QR
+  formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],  // solo códigos QR
+  disableFlip: false  };
 
     try {
       if (qrScanner.current) {
@@ -55,7 +59,7 @@ import '../public/css/ScanQR.css';
         { facingMode: "environment" },
         config,
         handleScanSuccess,
-        errMsg => console.warn("Error de escaneo:", errMsg)
+        errMsg => {}
       );
 
       setScanState(prev => ({ ...prev, cameraActive: true }));
@@ -114,23 +118,57 @@ import '../public/css/ScanQR.css';
     }, [eventoSeleccionado?.event_id, asistentes, scanState.cameraActive, scanState.scanningPaused, startScanner, stopScanner]);
 
     // Método principal de éxito de escaneo 
+        function extractTicketCode(qrText) {
+      try {
+        const url = new URL(qrText);
+        let path = url.pathname;
+        if (path.endsWith('/')) path = path.slice(0, -1);
+        const segments = path.split('/');
+        return segments.pop(); // último segmento
+            console.log("Código extraído del QR:", code); // <-- Aquí imprimes el código extraído
 
+      } catch {
+            console.log("QR no es URL, texto completo:", qrText); // <-- Aquí imprimes el texto tal cual si no es URL
 
-  const handleScanSuccess = useCallback(async (decodedText) => {
-    if (scanningPausedRef.current) return;
-    if (decodedText === lastScannedRef.current) return;
+        // No es URL, regresar el texto tal cual
+        return qrText;
+      }
+    }
 
-    scanningPausedRef.current = true;
-    lastScannedRef.current = decodedText;
+    function normalizeUrl(urlString) {
+      try {
+        let url = new URL(urlString);
+        if (url.protocol === "http:") {
+          url.protocol = "https:";
+        }
+        return url.toString();
+      } catch {
+        return urlString;
+      }
+    }
 
-    setScanState(prev => ({
-      ...prev,
-      scanningPaused: true,
-      lastScanned: decodedText
-    }));
+  const handleScanSuccess = useCallback(async (decodedText) => { 
 
-    try {
-      const result = await ScannerAPI.checkTicketStatus(eventoSeleccionado.event_id, decodedText);
+  if (scanningPausedRef.current) return;
+    console.log("QR detectado:", decodedText);
+
+  const normalizedQrText = normalizeUrl(decodedText);
+  const ticketCode = extractTicketCode(normalizedQrText);
+
+  if (ticketCode === lastScannedRef.current) return; 
+
+  scanningPausedRef.current = true;
+  lastScannedRef.current = ticketCode;
+
+  setScanState(prev => ({
+    ...prev,
+    scanningPaused: true,
+    lastScanned: ticketCode
+  }));
+
+  try {
+    const result = await ScannerAPI.checkTicketStatus(eventoSeleccionado.event_id, ticketCode);
+        console.log("Resultado backend:", result); // <-- Aquí imprimes la respuesta del backend
 
       setScanState(prev => ({
         ...prev,
@@ -147,6 +185,8 @@ import '../public/css/ScanQR.css';
       }));
     } finally {
       timeoutRef.current = setTimeout(() => {
+          console.log("Timeout para ocultar overlay ejecutado");
+
         qrScanner.current?.resume();
         scanningPausedRef.current = false;
         setScanState(prev => ({ ...prev, scanningPaused: false, showOverlay: false }));
@@ -247,7 +287,7 @@ import '../public/css/ScanQR.css';
 
           <div className="scanner-wrapper">
             <div id="qr-reader" ref={qrRef} className="qr-scanner" />
-          </div>
+            </div>
 
           <div className="sync-button-container">
             <button

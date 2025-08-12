@@ -1,6 +1,6 @@
 <?php
 class TicketFlow_Roles {
-    const ROLES_VERSION = '1.3.0';
+    const ROLES_VERSION = '1.3.3';
 
     private static $instance;
 
@@ -36,12 +36,17 @@ class TicketFlow_Roles {
 
     public static function init_roles() {
         // Rol Escaneador
+                // Ejemplo en PHP al crear roles:
         add_role('escaneador', 'Escaneador', [
-            'read' => true,
-            'ticketflow_scan_qr' => true,
-            'ticketflow_view_dashboard' => true,
-            'upload_files' => true
+        'read' => true,
+        'view_woocommerce_reports' => true,
+        'read_private_products' => true,
+        'read_product' => true,
+        'ticketflow_scan_qr' => true,
+        'ticketflow_view_dashboard' => true,
+        'upload_files' => true
         ]);
+
 
         // Rol Productor
         add_role('ticketflow_productor', 'Productor de Eventos', [
@@ -76,12 +81,16 @@ class TicketFlow_Roles {
     if ($role) {
         $role->add_cap('ticketflow_scan_qr');
         $role->add_cap('ticketflow_view_dashboard');
+        $role->add_cap('edit_products'); // si quieres editar productos
+        $role->add_cap('manage_woocommerce');
     }
 
     // Todos los usuarios con rol 'ticketflow_productor' obtienen esta capacidad
     $role = get_role('ticketflow_productor');
     if ($role) {
         $role->add_cap('ticketflow_view_dashboard');
+        $role->add_cap('edit_products'); // si quieres editar productos
+        $role->add_cap('manage_woocommerce');
     }
     }
 }

@@ -3,7 +3,6 @@ import App from './App';
 //importe estos dos administradores nuevos.
 import { EventoProvider } from "./context/EventoContext";
 import { QRProvider } from "./context/QRContext";
-import { AuthProvider } from "./context/AuthContext";
 //////////////////////////////
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
@@ -21,15 +20,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const root = createRoot(element);
         root.render(
-                <HashRouter>
-                    <AuthProvider>
-                        <EventoProvider>
-                            <QRProvider>
-                                <App />
-                            </QRProvider>
-                        </EventoProvider>
-                    </AuthProvider>
-                </HashRouter>
+            <HashRouter>
+                <React.StrictMode>
+                <EventoProvider>
+                        <QRProvider>
+                            <App />
+                        </QRProvider>
+                    </EventoProvider>
+                </React.StrictMode>
+            </HashRouter>
         );
         console.log("App rendered");
     } else {
