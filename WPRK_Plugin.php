@@ -4,46 +4,10 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.3.4 lite
+ * Version: 1.3.5 lite
  * License: GPL2
  * Text-Domain: wp-react-ticketflow-qr 
  */
-
-/**
- * Clase de prueba para verificar la inicialización
- *//*
-class TicketFlow_Test {
-    private static $instance = null;
-    
-    public static function instance() {
-        if (is_null(self::$instance)) {
-            self::$instance = new self();
-            self::$instance->init();
-        }
-        return self::$instance;
-    }
-    
-    private function __construct() {
-        // Constructor privado para patrón Singleton
-    }
-    
-    private function init() {
-        add_action('admin_notices', [$this, 'show_init_notice']);
-        error_log('TicketFlow Test: Plugin inicializado correctamente');
-    }
-    
-    public function show_init_notice() {
-        echo '<div class="notice notice-success is-dismissible">';
-        echo '<p>TicketFlow Test: ¡El plugin se ha inicializado correctamente!</p>';
-        echo '</div>';
-    }
-}
-
-// Reemplaza temporalmente la inicialización original con esta prueba
-add_action('plugins_loaded', function() {
-    TicketFlow_Test::instance();
-    // TicketFlow_Core::instance(); // Comentamos la línea original
-});*/
 
 defined('ABSPATH') || exit;
 

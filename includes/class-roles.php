@@ -1,6 +1,6 @@
 <?php
 class TicketFlow_Roles {
-    const ROLES_VERSION = '1.3.3';
+    const ROLES_VERSION = '1.3.5';
 
     private static $instance;
 

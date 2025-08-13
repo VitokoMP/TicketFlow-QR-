@@ -42,23 +42,23 @@ class TicketFlow_Admin {
                 [$this, 'render_admin_app']
             );
 
-            add_submenu_page(
+            /*add_submenu_page(
                 'ticketflow',
                 __('Gestión de Eventos', 'wp-react-ticketflow-qr'),
                 __('Eventos', 'wp-react-ticketflow-qr'),
                 'ticketflow_edit_events',
                 'ticketflow-eventos',
                 [$this, 'render_events_manager']
-            );
+            );*/
 
-            add_submenu_page(
+            /*add_submenu_page(
                 'ticketflow',
                 __('Reportes', 'wp-react-ticketflow-qr'),
                 __('Reportes', 'wp-react-ticketflow-qr'),
                 'ticketflow_export_qr',
                 'ticketflow-reportes',
                 [$this, 'render_reports']
-            );
+            );*/
         }
 
         // Scanner-specific menu
