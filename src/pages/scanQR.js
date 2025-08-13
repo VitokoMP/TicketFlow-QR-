@@ -94,45 +94,58 @@ export default function ScanQR() {
 
   // Iniciar el escáner con configuraciones optimizadas
   const startScanner = useCallback(async () => {
-    if (!eventoSeleccionado || cameraActiveRef.current) return;
+  if (!eventoSeleccionado || cameraActiveRef.current || qrScanner.current) return;
 
-    const config = {
-      fps: 10,
-      qrbox: 250,
-      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-      disableFlip: false,
-      videoConstraints: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        facingMode: "environment",
-        frameRate: { ideal: 15, max: 30 }
-      }
-    };
+  // ✅ Verificar que el contenedor exista y tenga tamaño
+  const container = document.getElementById("qr-reader");
+  if (!container) {
+    console.warn("Contenedor sin tamaño, retrasando startScanner...");
+    setTimeout(startScanner, 500); // reintentar en 500ms
+    return;
+  }
 
-    try {
-      await safeStopScanner();
-      
-      qrScanner.current = new Html5Qrcode("qr-reader");
-      
-      await qrScanner.current.start(
-        { facingMode: "environment" },
-        config,
-        handleScanSuccess,
-        errMsg => console.warn("Error de escaneo:", errMsg)
-      );
+  
 
-      cameraActiveRef.current = true;
-    } catch (err) {
-      console.error("Error iniciando escáner:", err);
-      showToast("No se pudo iniciar la cámara", "error");
-      
-      setTimeout(() => {
-        if (isMounted.current && eventoSeleccionado) {
-          startScanner();
-        }
-      }, 1000);
+  const config = {
+    fps: 10,
+    qrbox: 250,
+    formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+    disableFlip: false,
+    videoConstraints: {
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      facingMode: "environment",
+      frameRate: { ideal: 15, max: 30 }
     }
-  }, [eventoSeleccionado, safeStopScanner]);
+  };
+
+  try {
+    //AQUI VAMOS VERIFICANDO EL FLUJO DE INICIO DEL SCANNER
+    await safeStopScanner();
+
+    qrScanner.current = new Html5Qrcode("qr-reader");
+
+    await qrScanner.current.start(
+      { facingMode: "environment" },
+      config,
+      handleScanSuccess,
+      errMsg => console.warn("Error de escaneo:", errMsg)
+    );
+
+    console.log("Cámara iniciada correctamente");
+    cameraActiveRef.current = true;
+  } catch (err) {
+    console.error("Error iniciando escáner:", err);
+    showToast("No se pudo iniciar la cámara", "error");
+
+    setTimeout(() => {
+      if (isMounted.current && eventoSeleccionado) {
+        startScanner();
+      }
+    }, 1000);
+  }
+}, [eventoSeleccionado, safeStopScanner]);
+
 
   // Detener el escáner de forma segura
   const stopScanner = useCallback(async () => {
@@ -268,10 +281,9 @@ export default function ScanQR() {
         }
         return;
       }
-
-      const shouldStart = asistentesEvento.length > 0 && 
-                        !cameraActiveRef.current && 
-                        !scanningPausedRef.current;
+      //INICIA O DETIENE EL ESCÁNER SEGÚN EL ESTADO YA NO VERIFICA ASISTENTES
+      const shouldStart = !cameraActiveRef.current && 
+                          !scanningPausedRef.current;
       const shouldStop = (asistentesEvento.length === 0 || 
                         scanningPausedRef.current) && 
                         cameraActiveRef.current;
@@ -297,9 +309,6 @@ export default function ScanQR() {
     return () => {
       isMounted.current = false;
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      
-      const container = document.getElementById("qr-reader");
-      if (container) container.innerHTML = "";
       
       if (qrScanner.current) {
         qrScanner.current.clear?.().catch(e => console.warn("Clean error:", e));
@@ -368,7 +377,7 @@ export default function ScanQR() {
         </select>
 
         <div className="scanner-wrapper">
-          <div id="qr-reader" className="qr-scanner" />
+          <div id="qr-reader" className="qr-scanner" > </div>
         </div>
 
         <div className="sync-button-container">

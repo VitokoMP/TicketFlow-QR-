@@ -14,6 +14,8 @@ class TicketFlow_Admin {
         add_action('admin_enqueue_scripts', [$this, 'enqueue_scripts']);
         add_action('admin_menu', [$this, 'adjust_menu_for_scanners'], 999);
         add_action('admin_init', [$this, 'redirect_scanners']);
+        add_action('admin_menu', [$this, 'remove_main_submenu'], 999);
+
     }
 
     /**
@@ -31,8 +33,8 @@ class TicketFlow_Admin {
             20
         );
 
-        // Full menu for admins and producers
-        if (current_user_can('ticketflow_edit_events') || current_user_can('manage_options')) {
+        // Full menu for admins and producers. Para uso futuro: menú de administración completo
+       /* if (current_user_can('ticketflow_edit_events') || current_user_can('manage_options')) {
             add_submenu_page(
                 'ticketflow',
                 __('Dashboard', 'wp-react-ticketflow-qr'),
@@ -59,7 +61,7 @@ class TicketFlow_Admin {
                 'ticketflow-reportes',
                 [$this, 'render_reports']
             );*/
-        }
+        //}
 
         // Scanner-specific menu
         if (current_user_can('ticketflow_scan_qr')) {
@@ -176,15 +178,15 @@ class TicketFlow_Admin {
     }
 
     public function render_admin_app() {
-        echo '<div class="wrap ticketflow-app">';
-        echo '<div id="wprk-admin-app"></div>';
+        echo '<div class="wrap ticketflow-app-admin">';
+        echo '<div id="wprk-admin-app-qr"></div>';
         echo '</div>';
     }
 
     public function render_scanner() {
-        echo '<div class="wrap ticketflow-scanner">';
+        echo '<div class="wrap ticketflow-app">';
         if (current_user_can('ticketflow_scan_qr')) {
-            echo '<div id="ticketflow-scanner-root"></div>';
+            echo '<div id="wprk-admin-app"></div>';
         } else {
             wp_die(__('No tienes permisos para acceder a esta página', 'wp-react-ticketflow-qr'));
         }
@@ -210,4 +212,19 @@ class TicketFlow_Admin {
         }
         echo '</div>';
     }
+
+    public function remove_main_submenu() {
+    global $submenu;
+
+    if (isset($submenu['ticketflow'])) {
+        foreach ($submenu['ticketflow'] as $key => $item) {
+            if ($item[2] === 'ticketflow') { // slug de la página principal
+                unset($submenu['ticketflow'][$key]);
+            }
+        }
+        // Reindexar
+        $submenu['ticketflow'] = array_values($submenu['ticketflow']);
+    }
+}
+
 }
