@@ -9,7 +9,12 @@ class TicketFlow_Activator {
             flush_rewrite_rules();
         }
     private static function setup_database() {
+
         global $wpdb;
+        $table_name = $wpdb->prefix . 'ticketflow_scans';
+        $wpdb->query("DROP TABLE IF EXISTS $table_name");
+        error_log("Tabla $table_name eliminada correctamente.");
+
         $table_name = $wpdb->prefix . 'ticketflow_scans';
         $charset_collate = $wpdb->get_charset_collate();
         
@@ -32,7 +37,9 @@ class TicketFlow_Activator {
             KEY idx_event_id (event_id),
             KEY idx_user_id (user_id),
             KEY idx_scan_status (scan_status),
-            UNIQUE KEY unique_ticket_event (ticket_id, event_id)
+            UNIQUE KEY unique_ticket_event (ticket_id, event_id),
+            UNIQUE KEY `unique_event` (`event_id`)
+
         ) $charset_collate;";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -44,4 +51,5 @@ class TicketFlow_Activator {
         TicketFlow_Roles::init_roles();
         TicketFlow_Roles::update_user_capabilities();
     }
+    
 }

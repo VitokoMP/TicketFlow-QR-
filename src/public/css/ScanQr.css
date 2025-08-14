@@ -260,9 +260,9 @@ body {
 /* ========================= */
 #qr-reader {
   width: 100% !important;
-  height: auto;          /* flexible */
-  min-height: 300px;     /* asegura que canvas tenga tamaño */
-  max-height: 60vh;      /* adaptable a móviles */
+  max-width: 600px;   /* limita para escritorio */
+  height: 400px;      /* altura fija decente para PC */
+  max-height: 70vh;   /* adaptable a móviles */
   position: relative;
   overflow: hidden;
 }
@@ -270,10 +270,11 @@ body {
 #qr-reader video,
 #qr-reader canvas {
   width: 100% !important;
-  height: 100% !important; /* ocupar todo el contenedor */
+  height: 100% !important;
   object-fit: cover;
   display: block !important;
 }
+
 
 
 /* Contenedor del escáner */
