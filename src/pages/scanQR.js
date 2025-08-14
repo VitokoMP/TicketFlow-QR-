@@ -507,23 +507,33 @@ const safeStopScanner = useCallback(async () => {
   }, [eventoSeleccionado, setLoading, setAsistentes, startScanner, stopScanner]);
 
   // Sincronizar asistentes automáticamente cada 5 minutos
+// Sincronizar asistentes automáticamente cada 5 minutos
 useEffect(() => {
     if (!eventoSeleccionado?.event_id) return;
 
-    const interval = setInterval(async () => {
+    const syncAutomatically = async () => {
       try {
-        const res = await fetch(`/wp-json/ticketflow/v1/sync-attendees/${eventoSeleccionado.event_id}`);
-        const data = await res.json();
-        if (data.inserted > 0) {
-          console.log(`Nuevos asistentes: ${data.inserted}`);
+        const data = await ScannerAPI.syncAttendees(eventoSeleccionado.event_id);
+        if (data.success) {
+          setAsistentes(prev => ({
+            ...prev,
+            [eventoSeleccionado.event_id]: data.attendees || []
+          }));
+          console.log(`Asistentes sincronizados: ${data.attendees?.length || 0}`);
         }
       } catch (err) {
         console.error('Error sincronizando asistentes:', err);
       }
-    }, 300000); // 5 minutos
+    };
 
-    return () => clearInterval(interval); // Limpieza al desmontar o cambiar de evento
-  }, [eventoSeleccionado?.event_id]);
+    // Sincronizar inmediatamente al montar
+    syncAutomatically();
+    
+    // Configurar intervalo para sincronización periódica
+    const interval = setInterval(syncAutomatically, 300000); // 5 minutos
+
+    return () => clearInterval(interval);
+}, [eventoSeleccionado?.event_id, setAsistentes]);
   
   // Controlar cámara basado en evento seleccionado
   useEffect(() => {

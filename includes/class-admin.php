@@ -179,7 +179,7 @@ class TicketFlow_Admin {
 
     public function render_admin_app() {
         echo '<div class="wrap ticketflow-app-admin">';
-        echo '<div id="wprk-admin-app-qr"></div>';
+        echo '<div id="wprk-admin-app"></div>';
         echo '</div>';
     }
 
