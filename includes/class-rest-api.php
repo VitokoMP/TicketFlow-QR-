@@ -438,15 +438,15 @@ class TicketFlow_REST_API {
 
                 global $wpdb;
                 $tipo_evento = 'evento';
-                $tipo_asistente = 'asistente';/*
+                $tipo_asistente = 'asistente';
             //esta query hace un delete de los registros duplicados
                 $wpdb->query("
                 DELETE t1 FROM {$wpdb->prefix}ticketflow_scans t1
                 INNER JOIN {$wpdb->prefix}ticketflow_scans t2 
                 ON t1.event_id = t2.event_id 
-                AND t1.id < t2.id
-                WHERE t1.event_id IS NOT NULL
-                AND t2.event_id IS NOT NULL");*/
+                AND t1.event_start_date < t2.event_start_date
+                WHERE t1.tipo = 'evento' 
+                AND t2.tipo = 'evento'");
 
                 // Obtener eventos
                 $events = $wpdb->get_results("

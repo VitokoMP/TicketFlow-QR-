@@ -12,10 +12,6 @@ class TicketFlow_Activator {
 
         global $wpdb;
         $table_name = $wpdb->prefix . 'ticketflow_scans';
-        $wpdb->query("DROP TABLE IF EXISTS $table_name");
-        error_log("Tabla $table_name eliminada correctamente.");
-
-        $table_name = $wpdb->prefix . 'ticketflow_scans';
         $charset_collate = $wpdb->get_charset_collate();
         
         $sql = "CREATE TABLE $table_name (
@@ -37,8 +33,7 @@ class TicketFlow_Activator {
             KEY idx_event_id (event_id),
             KEY idx_user_id (user_id),
             KEY idx_scan_status (scan_status),
-            UNIQUE KEY unique_ticket_event (ticket_id, event_id),
-            UNIQUE KEY `unique_event` (`event_id`)
+            UNIQUE KEY unique_ticket_event (ticket_id, event_id)
 
         ) $charset_collate;";
 
