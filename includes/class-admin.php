@@ -107,19 +107,24 @@ class TicketFlow_Admin {
     /**
      * Redirects scanner users to scanner page
      */
-    public function redirect_scanners() {
-        if (!current_user_can('escaneador') || defined('DOING_AJAX')) {
-            return;
-        }
-
-        $allowed_pages = ['ticketflow', 'profile.php'];
-        $current_page = $_GET['page'] ?? '';
-        
-        if (!in_array($current_page, $allowed_pages)) {
-            wp_redirect(admin_url('admin.php?page=ticketflow'));
-            exit;
-        }
+   public function redirect_scanners() {
+    if (!current_user_can('escaneador') || defined('DOING_AJAX')) {
+        return;
     }
+
+    global $pagenow;
+    $page = isset($_GET['page']) ? $_GET['page'] : '';
+
+    // Permitir permanecer si ya está en el escáner o en el perfil
+    if (($pagenow === 'admin.php' && $page === 'ticketflow-escanear') || $pagenow === 'profile.php') {
+        return;
+    }
+
+    // Redirigir siempre a la pantalla del escáner
+    wp_safe_redirect(admin_url('admin.php?page=ticketflow-escanear'));
+    exit;
+}
+
 
     public function enqueue_scripts($hook) {
         $ticketflow_pages = [

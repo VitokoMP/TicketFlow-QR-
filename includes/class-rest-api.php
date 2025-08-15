@@ -304,131 +304,131 @@ class TicketFlow_REST_API {
                     return rest_ensure_response(['asistentes' => $agrupado]);
                 }
                 
-            public function mark_as_scanned($request) {
-                global $wpdb;
+                    public function mark_as_scanned($request) {
+                    global $wpdb;
+                    $table = $wpdb->prefix . 'ticketflow_scans';
+                    $id = intval($request['id']);
 
-                $table = $wpdb->prefix . 'ticketflow_scans';
-                $id = intval($request['id']);
+                    // Iniciar transacción
+                    $wpdb->query('START TRANSACTION;');
 
-                // Verificamos que exista el registro
-                $asistente = $wpdb->get_row($wpdb->prepare("
-                    SELECT * FROM $table WHERE id = %d LIMIT 1
-                ", $id), ARRAY_A);
+                    // Bloquear fila para evitar race conditions
+                    $asistente = $wpdb->get_row($wpdb->prepare("
+                        SELECT id, scan_status, scan_time, user_id 
+                        FROM $table 
+                        WHERE id = %d FOR UPDATE
+                    ", $id), ARRAY_A);
 
-                if (!$asistente) {
+                    if (!$asistente) {
+                        $wpdb->query('ROLLBACK;');
+                        return new WP_REST_Response([
+                            'success' => false,
+                            'status' => 'NOT_FOUND',
+                            'mensaje' => 'No se encontró el asistente con ese ID.'
+                        ], 404);
+                    }
+
+                    if ($asistente['scan_status'] !== 'pending') {
+                        $wpdb->query('ROLLBACK;');
+                        return new WP_REST_Response([
+                            'success' => false,
+                            'status' => 'ALREADY_SCANNED',
+                            'mensaje' => 'Este asistente ya fue validado anteriormente.',
+                            'asistente' => $asistente
+                        ], 200);
+                    }
+
+                    // Marcar como escaneado
+                    $asistente['scan_status'] = 'scanned';
+                    $asistente['scan_time']   = current_time('mysql');
+
+                    $update = $wpdb->update(
+                        $table,
+                        [
+                            'scan_status' => $asistente['scan_status'],
+                            'scan_time'   => $asistente['scan_time']
+                        ],
+                        ['id' => $id],
+                        ['%s','%s'],
+                        ['%d']
+                    );
+
+                    if ($update === false) {
+                        $wpdb->query('ROLLBACK;');
+                        return new WP_REST_Response([
+                            'success' => false,
+                            'status' => 'ERROR',
+                            'mensaje' => 'Error al actualizar el estado en la base de datos.'
+                        ], 500);
+                    }
+
+                    // Confirmar cambios
+                    $wpdb->query('COMMIT;');
+
                     return new WP_REST_Response([
-                        'success'   => false,
-                        'status' => 'NOT_FOUND',
-                        'mensaje' => 'No se encontró el asistente con ese ID.'
-                    ], 404);
-                }
-
-                // Si ya fue escaneado, no volvemos a marcarlo
-                if ($asistente['scan_status'] !== 'pending') {
-                    return new WP_REST_Response([
-                        'success'   => false,
-                        'status' => 'ALREADY_SCANNED',
-                        'mensaje' => 'Este asistente ya fue validado anteriormente.',
+                        'success' => true,
+                        'status' => 'UPDATED',
+                        'mensaje' => 'Asistente marcado como escaneado.',
                         'asistente' => $asistente
                     ], 200);
                 }
 
-                // Marcar como escaneado
-                $update = $wpdb->update(
-                    $table,
-                    [
-                        'scan_status' => 'scanned',
-                        'scan_time'   => current_time('mysql')
-                    ],
-                    ['id' => $id],
-                    ['%s', '%s'],
-                    ['%d']
-                );
 
-                if ($update === false) {
-                    return new WP_REST_Response([
-                        'success'   => false,
-                        'status' => 'ERROR',
-                        'mensaje' => 'Error al actualizar el estado en la base de datos.'
-                    ], 500);
-                }
-
-                // Devolvemos el asistente actualizado
-                $asistente_actualizado = $wpdb->get_row($wpdb->prepare("
-                    SELECT * FROM $table WHERE id = %d LIMIT 1
-                ", $id), ARRAY_A);
-
-                return new WP_REST_Response([
-                    'success'   => true,
-                    'status' => 'UPDATED',
-                    'mensaje' => 'Asistente marcado como escaneado.',
-                    'asistente' => $asistente_actualizado
-                ], 200);
-            }
 
                 /**function get_scan_status_by_qr($qr_code) {
                     Estoy realizandola conexion con los asistentes.
                     */
             public function get_scan_status_by_qr($event_id, $qr_code) {
-                global $wpdb;
+    global $wpdb;
+    $table = $wpdb->prefix . 'ticketflow_scans';
 
-                $table = $wpdb->prefix . 'ticketflow_scans';
+    // Intentamos localizar el asistente para este evento
+    $asistente = $wpdb->get_row($wpdb->prepare("
+        SELECT id, qr_code, scan_status, scan_time, event_id, event_title
+        FROM $table
+        WHERE event_id = %d AND qr_code = %s AND tipo = 'asistente'
+        LIMIT 1
+    ", $event_id, $qr_code), ARRAY_A);
 
-                // Primero: ¿El QR existe para este evento?
-                $asistente = $wpdb->get_row($wpdb->prepare("
-                    SELECT id, qr_code, scan_status, scan_time, event_id, event_title
-                    FROM $table
-                    WHERE qr_code = %s AND event_id = %d AND tipo = 'asistente'
-                    LIMIT 1
-                ", $qr_code, $event_id), ARRAY_A);
+    if ($asistente) {
+        return [
+            'success' => true,
+            'status'  => $asistente['scan_status'] === 'pending' ? 'PENDING' : 'ALREADY_SCANNED',
+            'asistente' => $asistente,
+            'mensaje' => $asistente['scan_status'] === 'pending'
+                ? 'Asistente válido y pendiente de validación.'
+                : 'Este asistente ya fue validado.'
+        ];
+    }
 
-                if ($asistente) {
-                    // Evaluamos si está pendiente o ya escaneado
-                    if ($asistente['scan_status'] === 'pending') {
-                        return [
-                            'success' => true,
-                            'status' => 'PENDING',
-                            'asistente' => $asistente,
-                            'mensaje' => 'Asistente válido y pendiente de validación.'
-                        ];
-                    } else {
-                        return [
-                            'success' => true,
-                            'status' => 'ALREADY_SCANNED',
-                            'asistente' => $asistente,
-                            'mensaje' => 'Este asistente ya fue validado.'
-                        ];
-                    }
-                }
+    // Si no pertenece a este evento, verificamos si existe en otro
+    $otro = $wpdb->get_row($wpdb->prepare("
+        SELECT id, qr_code, scan_status, scan_time, event_id, event_title
+        FROM $table
+        WHERE qr_code = %s AND tipo = 'asistente'
+        LIMIT 1
+    ", $qr_code), ARRAY_A);
 
-                // Segundo: ¿Existe el QR pero en otro evento?
-                $otro = $wpdb->get_row($wpdb->prepare("
-                    SELECT id, qr_code, scan_status, scan_time, event_id, event_title
-                    FROM $table
-                    WHERE qr_code = %s AND tipo = 'asistente'
-                    LIMIT 1
-                ", $qr_code), ARRAY_A);
+    if ($otro) {
+        return [
+            'success' => false,
+            'status' => 'MISMATCH',
+            'asistente' => $otro,
+            'mensaje' => 'Este código pertenece a otro evento.'
+        ];
+    }
 
-                if ($otro) {
-                    return [
-                        'success' => false,
-                        'status' => 'MISMATCH',
-                        'asistente' => $otro,
-                        'mensaje' => 'Este código pertenece a otro evento.'
-                    ];
-                }
+    return [
+        'success' => false,
+        'status' => 'NOT_FOUND',
+        'mensaje' => 'Este código QR no está registrado.'
+    ];
+}
 
-                // Tercero: No existe
-                return [
-                    'success' => false,
-                    'status' => 'NOT_FOUND',
-                    'mensaje' => 'Este código QR no está registrado.'
-                ];
-            }
 
             /**
              * Sabremos cuidar lo que nos importa, aca avanzamos para organizar los estados.
-            MAntenga el foco
+            * MAntenga el foco
 
             */ 
 
