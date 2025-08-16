@@ -56,5 +56,9 @@ export const ScannerAPI = {
         secureFetch(`/escanear/${eventId}/${qrCode}`),
     
     markAsScanned: (ticketId) => 
-        secureFetch(`/mark-as-scanned/${ticketId}`, 'POST')
+        secureFetch(`/mark-as-scanned/${ticketId}`, 'POST'),
+    
+     // NUEVO: marcar múltiples tickets en batch
+    markMultipleAsScanned: (ticketIds = []) =>
+        secureFetch('/bulk-mark-scanned', 'POST', { ids: ticketIds })
 };

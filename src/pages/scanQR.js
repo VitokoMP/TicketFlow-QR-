@@ -1,17 +1,17 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats, Html5QrcodeScannerState } from "html5-qrcode";
 import { useEvento } from "../context/EventoContext";
-import { ScannerAPI } from "../services/apiService";
+import { ScannerAPI } from "../services/ApiService";
 import checkImg from '../public/img/check.png';
 import crossImg from '../public/img/cross.png';
 import warningImg from '../public/img/warning.png';
 import '../public/css/ScanQR.css';
   
-const OPTIMAL_SCAN_DELAY = 400; // Tiempo mínimo entre escaneos (para feedback visual)
-const API_TIMEOUT = 1500; // Timeout para llamadas API
+const OPTIMAL_SCAN_DELAY = 200; // Tiempo mínimo entre escaneos (para feedback visual)
+const API_TIMEOUT = 1000; // Timeout para llamadas API
  
-const MIN_DISPLAY_TIME = 1500; // 1.5 segundos (antes era 400ms)
-const ERROR_DISPLAY_TIME = 2000; // 2 segundos para errores
+const MIN_DISPLAY_TIME = 800; // 1.5 segundos (antes era 400ms)
+const ERROR_DISPLAY_TIME = 1000; // 2 segundos para errores
 const STOP_RETRY_MAX = 8;
 const STOP_RETRY_BASE_MS = 120; // backoff base (120ms, 240ms, 480ms ...)
 
@@ -23,7 +23,9 @@ export default function ScanQR() {
     eventoSeleccionado,
     setLoading,
     selectEvento,
-  } = useEvento();
+    updateAsistenteStatus,
+    addToBuffer,
+  } = useEvento(); 
 
   const [scanState, setScanState] = useState({
     cameraActive: false,
@@ -43,6 +45,7 @@ export default function ScanQR() {
   const isMounted = useRef(true);
   const lastScannedRef = useRef("");
   const scanningPausedRef = useRef(false); 
+  const validationRef = useRef(null); 
 
   // Serializador de operaciones (evita start/stop concurrentes)
   const opLockRef = useRef(false);
@@ -108,11 +111,12 @@ export default function ScanQR() {
 
   // Función segura para detener el escáner// Constants para reintentos
 
-const safeStopScanner = useCallback(async () => {
-  if (!qrScanner.current) {
-    console.debug("safeStopScanner: no hay instancia de qrScanner, nada que hacer.");
+const safeStopScanner = useCallback(async () => { 
+  // Modificar el log inicial para solo mostrar en desarrollo
+  if (process.env.NODE_ENV === 'development' && !qrScanner.current) {
+    console.debug("safeStopScanner: no hay instancia de qrScanner");
     return;
-  }
+  } 
 
   // Guardar referencia local para que no cambie en medio de la operación
   const scanner = qrScanner.current;
@@ -348,118 +352,193 @@ const safeStopScanner = useCallback(async () => {
     }, "restartScanner");
   }, [runSerial, safeStopScanner, startScannerCore]);
 
-
 const handleScanSuccess = useCallback(async (decodedText) => {
-    if (!isMounted.current || scanningPausedRef.current || !qrScanner.current || !eventoSeleccionado) {
-        return;
+  if (!isMounted.current || scanningPausedRef.current || !qrScanner.current || !eventoSeleccionado) {
+    return;
+  }
+
+  const ticketCode = extractTicketCode(normalizeUrl(decodedText));
+  if (!ticketCode || ticketCode === lastScannedRef.current) return;
+
+  // Bloqueo y preparación del estado
+  scanningPausedRef.current = true;
+  lastScannedRef.current = ticketCode;
+  const scanStartTime = performance.now();
+
+  setScanState(prev => ({
+    ...prev,
+    scanningPaused: true,
+    lastScanned: ticketCode,
+    validation: null,
+    showOverlay: false,
+    scannerState: Html5QrcodeScannerState.PAUSED
+  }));
+
+  // Limpieza de timeout previo
+  if (timeoutRef.current) {
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+  }
+
+  try {
+    // 1. Pausa segura del escáner
+    if (qrScanner.current && typeof qrScanner.current.pause === 'function') {
+      await safeCall(() => qrScanner.current.pause());
     }
 
-    const ticketCode = extractTicketCode(normalizeUrl(decodedText));
-    if (!ticketCode || ticketCode === lastScannedRef.current) return;
+    // 2. Procesamiento del ticket
+    let validationState;
+    const asistentesEvento = asistentes[eventoSeleccionado.event_id] || [];
+    const asistenteLocal = asistentesEvento.find(a => 
+      a.ticket_code === ticketCode || a.id === ticketCode
+    );
 
-    // Bloqueo para nuevos escaneos
-    scanningPausedRef.current = true;
-    lastScannedRef.current = ticketCode;
-    const scanStartTime = performance.now();
+    if (asistenteLocal) {
+      // Caso 1: Ticket en caché local
+      if (asistenteLocal.status === 'SCANNED') {
+        validationState = {
+          status: "ya-validado",
+          mensaje: `Ticket ya escaneado (${asistenteLocal.nombre || ''})`,
+          asistente: asistenteLocal,
+          timestamp: Date.now()
+        };
+      } else {
+        // Actualización optimizada
+        await updateAsistenteStatus(asistenteLocal.id, 'SCANNED');
+        addToBuffer({
+          ticket_id: asistenteLocal.id,
+          event_id: eventoSeleccionado.event_id,
+          timestamp: new Date().toISOString()
+        });
+        
+        validationState = {
+          status: "valid",
+          mensaje: `Entrada válida - ${asistenteLocal.nombre || ''}`,
+          asistente: asistenteLocal,
+          timestamp: Date.now()
+        };
+      }
+    } else {
+      // Caso 2: Validación con API
+      const checkResult = await ScannerAPI.checkTicketStatus(
+        eventoSeleccionado.event_id, 
+        ticketCode
+      );
 
-    setScanState(prev => ({
-        ...prev,
-        scanningPaused: true,
-        lastScanned: ticketCode,
-        validation: null,
-        showOverlay: false,
-        scannerState: Html5QrcodeScannerState.PAUSED
-    }));
-
-    try {
-        // Pausar cámara (no esperar)
-        await safeCall(() => {
-            if (qrScanner.current?.getState() === Html5QrcodeScannerState.SCANNING) {
-                return qrScanner.current.pause();
-            }
+      if (checkResult.success && checkResult.status === "PENDING") {
+        setAsistentes(prev => {
+          const currentList = prev[eventoSeleccionado.event_id] || [];
+          return {
+            ...prev,
+            [eventoSeleccionado.event_id]: [
+              checkResult.asistente,
+              ...currentList.filter(a => a.id !== checkResult.asistente.id)
+            ]
+          };
         });
 
-        // Validar ticket
-        const checkResult = await ScannerAPI.checkTicketStatus(
-            eventoSeleccionado.event_id, 
-            ticketCode
-        );
+        await updateAsistenteStatus(checkResult.asistente.id, 'SCANNED');
+        addToBuffer({
+          ticket_id: checkResult.asistente.id,
+          event_id: eventoSeleccionado.event_id,
+          timestamp: new Date().toISOString()
+        });
 
-        let validationState;
-        if (checkResult.success && checkResult.status === "PENDING") {
-            const markResult = await ScannerAPI.markAsScanned(checkResult.asistente.id);
-            
-            validationState = {
-                status: markResult.status === "ALREADY_SCANNED" ? "ya-validado" : "valid",
-                mensaje: markResult.mensaje || "Entrada válida",
-                asistente: checkResult.asistente,
-                timestamp: Date.now() // Para control de visualización
-            };
-        } else if (checkResult.success) {
-            validationState = {
-                status: checkResult.status.toLowerCase(),
-                mensaje: checkResult.mensaje,
-                asistente: checkResult.asistente,
-                timestamp: Date.now()
-            };
-        } else {
-            validationState = {
-                status: "error",
-                mensaje: checkResult.mensaje || "QR inválido",
-                timestamp: Date.now()
-            };
-        }
-
-        // Mostrar el resultado inmediatamente
-        setScanState(prev => ({
-            ...prev,
-            validation: validationState,
-            showOverlay: true
-        }));
-
-        // Calcular tiempo de visualización
-        const elapsed = performance.now() - scanStartTime;
-        const isError = validationState.status === "error" || validationState.status === "ya-validado";
-        const displayTime = isError ? ERROR_DISPLAY_TIME : MIN_DISPLAY_TIME;
-        const remainingDelay = Math.max(displayTime - elapsed, isError ? 1500 : 1000);
-
-        // Programar reinicio
-        timeoutRef.current = setTimeout(() => {
-            if (!isMounted.current) return;
-            
-            // Verificar que no sea un mensaje más reciente
-            if (scanState.validation?.timestamp !== validationState.timestamp) {
-                return;
-            }
-
-            resetScannerState();
-            restartScanner().catch(e => console.error("Error al reiniciar:", e));
-        }, remainingDelay);
-
-    } catch (error) {
-        console.error("Error en escaneo:", error);
-        const errorState = {
-            status: "error",
-            mensaje: error.message || "Error en el escaneo",
-            timestamp: Date.now()
+        validationState = {
+          status: "valid",
+          mensaje: `Entrada válida - ${checkResult.asistente.nombre || ''}`,
+          asistente: checkResult.asistente,
+          timestamp: Date.now()
         };
-        
-        setScanState(prev => ({
-            ...prev,
-            validation: errorState,
-            showOverlay: true
-        }));
-
-        // Reinicio con delay más largo para errores
-        timeoutRef.current = setTimeout(() => {
-            if (!isMounted.current) return;
-            if (scanState.validation?.timestamp !== errorState.timestamp) return;
-            
-            resetScannerState();
-            restartScanner().catch(e => console.error("Error al reiniciar:", e));
-        }, ERROR_DISPLAY_TIME);
+      } else if (checkResult.success) {
+        validationState = {
+          status: checkResult.status.toLowerCase(),
+          mensaje: checkResult.mensaje,
+          asistente: checkResult.asistente,
+          timestamp: Date.now()
+        };
+      } else {
+        validationState = {
+          status: "error",
+          mensaje: checkResult.mensaje || "QR inválido",
+          timestamp: Date.now()
+        };
+      }
     }
-}, [eventoSeleccionado, extractTicketCode, normalizeUrl, restartScanner, safeCall, scanState.validation]);
+
+    // Mostrar resultado
+    setScanState(prev => ({
+      ...prev,
+      validation: validationState,
+      showOverlay: true
+    }));
+
+    // Programar reinicio
+    const elapsed = performance.now() - scanStartTime;
+    const displayTime = ["error", "ya-validado"].includes(validationState.status)
+      ? Math.max(ERROR_DISPLAY_TIME - elapsed, 500)  // 500ms mínimo para errores
+      : Math.max(MIN_DISPLAY_TIME - elapsed, 300);   // 300ms mínimo para éxitos
+
+    timeoutRef.current = setTimeout(async () => {
+      if (!isMounted.current || !qrScanner.current) return;
+      
+      scanningPausedRef.current = false;
+      lastScannedRef.current = "";
+      
+      setScanState(prev => ({
+        ...prev,
+        scanningPaused: false,
+        showOverlay: false,
+        lastScanned: "",
+        scannerState: Html5QrcodeScannerState.SCANNING
+      }));
+
+      // Reanudación segura
+      try {
+        const scanner = qrScanner.current;
+        if (scanner && typeof scanner.resume === 'function') {
+          await scanner.resume();
+        } else {
+          await restartScanner();
+        }
+      } catch (error) {
+        console.error("Error al reanudar escáner:", error);
+        await restartScanner();
+      }
+    }, displayTime);
+
+  } catch (error) {
+    console.error("Error en escaneo:", error);
+    
+    setScanState(prev => ({
+      ...prev,
+      validation: {
+        status: "error",
+        mensaje: error.message || "Error en la validación",
+        timestamp: Date.now()
+      },
+      showOverlay: true
+    }));
+
+    timeoutRef.current = setTimeout(() => {
+      if (!isMounted.current) return;
+      resetScannerState();
+      restartScanner().catch(e => console.error("Error al reiniciar:", e));
+    }, ERROR_DISPLAY_TIME);
+  }
+}, [
+  eventoSeleccionado,
+  asistentes,
+  extractTicketCode, 
+  normalizeUrl,
+  restartScanner,
+  safeCall,
+  updateAsistenteStatus,
+  addToBuffer,
+  resetScannerState,
+  setAsistentes
+]);
+
 
 // Función auxiliar para resetear estado
 const resetScannerState = useCallback(() => {
@@ -494,36 +573,32 @@ function handleScanError(error) {
     }, 300);
 }
   // Sincronizar asistentes manualmente
-  const handleSync = useCallback(async () => {
-    if (!eventoSeleccionado?.event_id) return;
+ const handleSync = useCallback(async () => {
+  if (!eventoSeleccionado?.event_id || !setAsistentes) {
+    console.error('Faltan dependencias para sincronización');
+    return;
+  }
 
-    setLoading(true);
+  setLoading(true);
+  try {
     await stopScanner();
-
-    try {
-      const data = await ScannerAPI.syncAttendees(eventoSeleccionado.event_id);
-      if (data.success) {
-        setAsistentes(prev => ({
-          ...prev,
-          [eventoSeleccionado.event_id]: data.attendees || []
-        }));
-        await startScanner();
-        showToast("Asistentes sincronizados correctamente", "success");
-      }
-    } catch (error) {
-      console.error("Error sincronizando asistentes:", error);
-      setScanState(prev => ({
+    
+    const data = await ScannerAPI.syncAttendees(eventoSeleccionado.event_id);
+    if (data.success) {
+      setAsistentes(prev => ({
         ...prev,
-        validation: {
-          status: "error",
-          mensaje: "Error al sincronizar asistentes"
-        }
+        [eventoSeleccionado.event_id]: data.attendees || []
       }));
-      showToast("Error al sincronizar asistentes", "error");
-    } finally {
-      setLoading(false);
+      showToast("Asistentes sincronizados", "success");
     }
-  }, [eventoSeleccionado, setLoading, setAsistentes, startScanner, stopScanner]);
+  } catch (error) {
+    console.error("Error sincronizando:", error);
+    showToast("Error al sincronizar", "error");
+  } finally {
+    setLoading(false);
+    startScanner(); // Reiniciar después de sincronizar
+  }
+}, [eventoSeleccionado, setAsistentes, setLoading, startScanner, stopScanner]);
 
   useEffect(() => {
     if (!eventoSeleccionado?.event_id) return;
@@ -665,7 +740,11 @@ function handleScanError(error) {
       safeStopScanner();
     };
   }, [safeStopScanner]);
-
+  // Actualizar referencia de validación
+  useEffect(() => {
+    validationRef.current = scanState.validation;
+  }, [scanState.validation]);
+  
   // Renderizar overlay de validación
   const renderValidationOverlay = useCallback(() => {
     if (!scanState.showOverlay || !scanState.validation) return null;

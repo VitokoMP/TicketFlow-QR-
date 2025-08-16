@@ -93,6 +93,26 @@ class TicketFlow_REST_API {
 
 
     public function register_routes() {
+        
+         register_rest_route('ticketflow/v1', '/bulk-mark-scanned', [
+        'methods' => 'POST',
+        'callback' => [ $this, 'mark_multiple_as_scanned' ],
+        'permission_callback' => '__return_true' /* => function() {
+            return current_user_can('edit_posts');
+            },
+            'args' => [
+                'ids' => [
+                    'required' => true,
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'integer'
+                    ],
+                    'validate_callback' => function($ids) {
+                        return count($ids) <= 100; // Límite por seguridad
+                    }
+                ]
+            ]*/
+        ]);
         //Endpoint Para obtener el NONCE!
         register_rest_route('ticketflow/v1', '/get-nonce', [
             'methods' => 'GET',
@@ -433,7 +453,7 @@ class TicketFlow_REST_API {
             */ 
 
             public function mep_sincronizar_eventos_y_asistentes() {
-
+                $eventos_insertados = []; // Añade esto al inicio de tu función
                 error_log('Entrando en la función mep_sincronizar_eventos_y_asistentes');
 
                 global $wpdb;
@@ -773,6 +793,104 @@ class TicketFlow_REST_API {
                         return new WP_REST_Response('No se encontraron eventos.', 404);
                     }
                 }
+                        //Ultima mejora para el sistema
+            public function mark_multiple_as_scanned($request) {
+                global $wpdb;
+                $table = $wpdb->prefix . 'ticketflow_scans';
+                $ids = array_map('intval', $request['ids']);
+                
+                if (empty($ids)) {
+                    return new WP_REST_Response([
+                        'success' => false,
+                        'message' => 'No se proporcionaron IDs válidos'
+                    ], 400);
+                }
 
+                // Iniciar transacción
+                $wpdb->query('START TRANSACTION;');
+
+                try {
+                    // 1. Bloquear todas las filas primero para evitar deadlocks
+                    $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+                    $query = $wpdb->prepare(
+                        "SELECT id, scan_status, scan_time, user_id 
+                        FROM $table 
+                        WHERE id IN ($placeholders) 
+                        FOR UPDATE",
+                        $ids
+                    );
+                    
+                    $asistentes = $wpdb->get_results($query, ARRAY_A);
+                    
+                    if (count($asistentes) !== count($ids)) {
+                        $wpdb->query('ROLLBACK;');
+                        return new WP_REST_Response([
+                            'success' => false,
+                            'message' => 'Algunos asistentes no fueron encontrados',
+                            'missing_ids' => array_diff($ids, array_column($asistentes, 'id'))
+                        ], 404);
+                    }
+
+                    // 2. Clasificar asistentes
+                    $current_time = current_time('mysql');
+                    $to_update = [];
+                    $already_scanned = [];
+                    
+                    foreach ($asistentes as $asistente) {
+                        if ($asistente['scan_status'] === 'pending') {
+                            $to_update[] = $asistente['id'];
+                        } else {
+                            $already_scanned[] = [
+                                'id' => $asistente['id'],
+                                'status' => $asistente['scan_status'],
+                                'scan_time' => $asistente['scan_time']
+                            ];
+                        }
+                    }
+
+                    // 3. Actualización masiva optimizada
+                    if (!empty($to_update)) {
+                        $placeholders = implode(',', array_fill(0, count($to_update), '%d'));
+                        $update_query = $wpdb->prepare(
+                            "UPDATE $table 
+                            SET scan_status = 'scanned', 
+                                scan_time = %s 
+                            WHERE id IN ($placeholders)",
+                            array_merge([$current_time], $to_update)
+                        );
+                        
+                        $updated = $wpdb->query($update_query);
+                        
+                        if ($updated === false) {
+                            throw new Exception('Error en actualización masiva');
+                        }
+                    }
+
+                    // 4. Confirmar transacción
+                    $wpdb->query('COMMIT;');
+
+                    // 5. Preparar respuesta
+                    $response = [
+                        'success' => true,
+                        'updated_count' => count($to_update),
+                        'already_scanned' => $already_scanned,
+                        'scan_time' => $current_time
+                    ];
+
+                    // 6. Opcional: Registrar en logs
+                    if (!empty($already_scanned)) {
+                        $response['warning'] = 'Algunos tickets ya estaban escaneados';
+                    }
+
+                    return new WP_REST_Response($response, 200);
+
+                } catch (Exception $e) {
+                    $wpdb->query('ROLLBACK;');
+                    return new WP_REST_Response([
+                        'success' => false,
+                        'message' => 'Error en la transacción: ' . $e->getMessage()
+                    ], 500);
+                }
+            }
 
     }
