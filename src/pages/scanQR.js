@@ -14,6 +14,7 @@ const MIN_DISPLAY_TIME = 800; // 1.5 segundos (antes era 400ms)
 const ERROR_DISPLAY_TIME = 1000; // 2 segundos para errores
 const STOP_RETRY_MAX = 8;
 const STOP_RETRY_BASE_MS = 120; // backoff base (120ms, 240ms, 480ms ...)
+const MAX_BACKOFF_MS = 10000; // 10 segundos máximo para backoff
 
 export default function ScanQR() {
   const {
@@ -754,7 +755,9 @@ function handleScanError(error) {
       valid: { icon: checkImg, title: "TICKET VÁLIDO", color: "#4CAF50" },
       error: { icon: crossImg, title: "ERROR", color: "#f44336" },
       mismatch: { icon: warningImg, title: "TICKET NO PERTENECE A EVENTO", color: "#FF9800" },
-      "ya-validado": { icon: warningImg, title: "TICKET YA REGISTRADO", color: "#FFC107" }
+      "ya-validado": { icon: warningImg, title: "TICKET YA REGISTRADO", color: "#FFC107" },
+      'invalid': { icon: crossImg, title: "INVÁLIDO", color: "#f44336" },
+      'pending': { icon: warningImg, title: "PENDIENTE", color: "#FF9800" }
     };
 
     const config = validationConfig[status] || validationConfig.error;

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { ScannerAPI } from "../services/ApiService";
+import { toast } from 'react-toastify'; // Or your preferred toast library
 
 const EventoContext = createContext();
 
@@ -15,7 +16,8 @@ export const EventoProvider = ({ children }) => {
   // ========== ESTADOS EXISTENTES (se mantienen igual) ==========
   const [eventos, setEventos] = useState([]);
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null);
-  const [asistentes, setAsistentes] = useState({});
+  const [asistentes, setAsistentes] = useState(() => ({}));
+  const [asistentesIndex, setAsistentesIndex] = useState({}); // { [ticket_code]: asistente }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isEventoDisponible, setIsEventoDisponible] = useState(false);
@@ -57,103 +59,123 @@ export const EventoProvider = ({ children }) => {
     }
   };
 
-  const fetchAsistentes = async (eventIds = []) => {
-    if (eventIds.length === 0) return {};
-
-    const queryString = eventIds.map(id => `event_ids[]=${id}`).join('&');
-
-    try {
-      const res = await fetch(`${window.location.origin}/wp-json/ticketflow/v1/asistentes?${queryString}`);
-      if (!res.ok) throw new Error('Error al obtener asistentes');
-
-      const data = await res.json();
-      return data.asistentes || {};
-    } catch (err) {
-      console.error('❌ fetchAsistentes error:', err);
-      return {};
-    }
+  // Replace showToast calls with:
+  const showToast = (message, type) => {
+    toast[type](message, {
+      position: 'top-right',
+      autoClose: 5000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true
+    });
   };
+
+  const fetchAsistentes = async (eventId) => {
+  try {
+     setLoading(true);
+    const { success, data, message } = await ScannerAPI.syncAttendees(eventId);
+    
+    if (!success) {
+      throw new Error(message || 'Error al sincronizar asistentes');
+    }
+
+    const attendees = Array.isArray(data?.asistentes) ? data.asistentes : 
+                    Array.isArray(data?.attendees) ? data.attendees : [];
+
+    // Normalización de datos
+    const normalized = attendees.map(a => ({
+      id: a.id,
+      ticket_code: a.ticket_code,
+      nombre: a.nombre || 'Invitado',
+      status: a.status || 'PENDING'
+    }));
+
+    // Actualiza ambos estados
+    setAsistentes(prev => ({
+      ...prev,
+      [eventId]: normalized
+    }));
+
+    setAsistentesIndex(prev => ({
+      ...prev,
+      [eventId]: normalized.reduce((acc, a) => {
+        if (a.ticket_code) acc[a.ticket_code] = a;
+        if (a.id) acc[a.id] = a;
+        return acc;
+      }, {})
+    }));
+
+    return normalized;
+  } catch (error) {
+    console.error('❌ fetchAsistentes error:', error);
+    showToast(error.message, 'error');
+    return [];
+  } finally {
+    setLoading(false);
+  }
+};
 
   const selectEvento = async (evento) => {
-    setLoading(true);
-    setError(null);
+  setLoading(true);
+  try {
+    const id = evento.event_id;
+    setEventoSeleccionado(evento);
+    setEventId(id);
 
-    try {
-      const id = evento.event_id;
-      setEventId(id);
-      setEventoSeleccionado(evento);
-      console.log("Evento seleccionado cambiado a:", evento);
-
-      const syncUrl = `${window.location.origin}/wp-json/ticketflow/v1/sync-attendees/${id}`;
-      const syncResponse = await fetch(syncUrl);
-      if (!syncResponse.ok) throw new Error("Error al sincronizar asistentes");
-      await syncResponse.json();
-
-      setAsistentes(prev => ({ ...prev, [id]: [] }));
-
-      const asistentesCargados = await fetchAsistentes([id]);
-      console.log("Asistentes cargados en selectEvento:", asistentesCargados);
-
-      setAsistentes(prev => ({ ...prev, ...asistentesCargados }));
-      setIsEventoDisponible(true);
-    } catch (err) {
-      setError(err.message);
-      setIsEventoDisponible(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Usa directamente el API mejorado
+    const asistentes = await fetchAsistentes(id);
+    
+    setIsEventoDisponible(asistentes.length > 0);
+  } catch (error) {
+    setError(error.message);
+    setIsEventoDisponible(false);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // ========== NUEVAS FUNCIONES OPTIMIZADAS ==========
   // Actualización individual de asistente (nueva)
   const updateAsistenteStatus = useCallback((asistenteId, newStatus) => {
-  const startTime = performance.now();
-  let updateApplied = false;
-  
-  try {
-    if (!eventoSeleccionado?.event_id) {
-      console.warn('No se puede actualizar estado: ningún evento seleccionado');
-      return false;
-    }
+   console.log("Estado actualizado:", asistentes[eventoSeleccionado.event_id].find(a => a.id === asistenteId));
+
+  if (!eventoSeleccionado) return false;
+
+  setAsistentes(prev => {
+    const current = prev[eventoSeleccionado.event_id] || [];
+    const index = current.findIndex(a => a.id === asistenteId);
     
-    setAsistentes(prev => {
-      const currentEventAttendees = prev[eventoSeleccionado.event_id] || [];
-      const asistenteIndex = currentEventAttendees.findIndex(a => a.id === asistenteId);
+    if (index === -1 || current[index].status === newStatus) {
+      return prev;
+    }
+
+    // Actualización optimizada
+    const updated = [...current];
+    updated[index] = { ...updated[index], status: newStatus };
+
+    // Actualiza el índice
+    setAsistentesIndex(prev => {
+      const eventIndex = prev[eventoSeleccionado.event_id] || {};
+      const asistente = eventIndex[asistenteId];
       
-      if (asistenteIndex === -1 || 
-          currentEventAttendees[asistenteIndex].status === newStatus) {
-        return prev;
-      }
-      
-      updateApplied = true;
-      
-      // Actualización optimizada con slice
       return {
         ...prev,
-        [eventoSeleccionado.event_id]: [
-          ...currentEventAttendees.slice(0, asistenteIndex),
-          { 
-            ...currentEventAttendees[asistenteIndex], 
-            status: newStatus,
-            updatedAt: Date.now()
-          },
-          ...currentEventAttendees.slice(asistenteIndex + 1)
-        ]
+        [eventoSeleccionado.event_id]: {
+          ...eventIndex,
+          [asistenteId]: { ...asistente, status: newStatus },
+          ...(asistente?.ticket_code ? { 
+            [asistente.ticket_code]: { ...asistente, status: newStatus } 
+          } : {})
+        }
       };
     });
-    
-    return true;
-  } finally {
-    if (process.env.NODE_ENV === 'development') {
-      const duration = performance.now() - startTime;
-      console.log(`updateAsistenteStatus: ${duration.toFixed(2)}ms`, {
-        asistenteId,
-        newStatus,
-        updateApplied
-      });
-    }
-  }
-}, [eventoSeleccionado]);
+
+    return { ...prev, [eventoSeleccionado.event_id]: updated };
+  });
+
+  return true;
+}, [eventoSeleccionado, asistentes]);
 
   // Agregar al buffer (optimizada)
   const addToBuffer = useCallback((scanData) => {
@@ -196,7 +218,7 @@ export const EventoProvider = ({ children }) => {
       setLoading(false);
       syncTimerRef.current = null;
     }
-  }, []);
+  }, [updateBulkAsistentes,eventoSeleccionado]);
 
   // Actualización masiva (existente pero mejorada)
   const updateBulkAsistentes = useCallback((updates) => {

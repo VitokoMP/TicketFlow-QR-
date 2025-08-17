@@ -290,4 +290,18 @@ body {
   background: rgba(0, 0, 0, 0.8) !important;
   padding: 10px;
   font-weight: bold;
+} 
+/* ========================= */
+#qr-reader {
+  position: relative;
+}
+
+#qr-reader video {
+  width: 100% !important;
+  height: auto !important;
+  object-fit: cover;
+}
+
+#html5-qrcode-anchor-scan-type-change {
+  display: none !important;
 }
