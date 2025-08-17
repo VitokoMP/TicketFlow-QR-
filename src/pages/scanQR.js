@@ -57,6 +57,9 @@ export default function ScanQR() {
   const validationRef = useRef(null);
   const opLockRef = useRef(false);
   const startAttemptsRef = useRef(0);
+    
+  const lastScanTimeRef = useRef(0);      // controla tiempo entre escaneos
+  const lastProcessedTicketRef = useRef(); // controla ticket duplicado
 
   const runSerial = useCallback(async (fn, label = "op") => {
     console.log(`[runSerial] Iniciando operación serializada: ${label}`);
@@ -76,7 +79,26 @@ export default function ScanQR() {
       console.log(`[runSerial] Operación ${label} completada`);
     }
   }, []);
+  
+const extractTicketCode = useCallback((qrText) => {
+  if (!qrText) return null;
+  console.log('[extractTicketCode] Extrayendo código de:', qrText);
 
+  try {
+    // Intentar tratar como URL
+    const url = new URL(qrText);
+    let path = url.pathname;
+    if (path.endsWith('/')) path = path.slice(0, -1); // quitar slash final
+    const code = path.split('/').filter(Boolean).pop();
+    console.log('[extractTicketCode] Código extraído (URL):', code);
+    return code;
+  } catch (err) {
+    // No es URL, usar texto plano
+    const text = qrText.replace(/\/$/, '').split('/').filter(Boolean).pop();
+    console.log('[extractTicketCode] Código extraído (Texto plano):', text);
+    return text;
+  }
+}, []);
   const safeCall = useCallback(async (fn, label = "") => {
     console.log(`[safeCall] Llamada segura iniciada: ${label}`);
     if (!isMounted.current) {
@@ -115,20 +137,7 @@ export default function ScanQR() {
     }
   }, []);
 
-  const extractTicketCode = useCallback((qrText) => {
-    console.log('[extractTicketCode] Extrayendo código de:', qrText);
-    try {
-      const url = new URL(qrText);
-      let path = url.pathname;
-      if (path.endsWith('/')) path = path.slice(0, -1);
-      const code = path.split('/').pop();
-      console.log('[extractTicketCode] Código extraído:', code);
-      return code;
-    } catch (error) {
-      console.warn('[extractTicketCode] No es una URL, se usa texto completo');
-      return qrText;
-    }
-  }, []);
+  
 
   const safeStopScanner = useCallback(async () => {
     console.log('[safeStopScanner] Iniciando detención segura del escáner');
@@ -352,20 +361,45 @@ export default function ScanQR() {
     }, "restartScanner");
   }, [runSerial, safeStopScanner, startScannerCore]);
 
-  const handleScanSuccess = useCallback(async (decodedText) => {
-  console.log('[Scan] Iniciando procesamiento de QR:', decodedText);
-  
+   ///
+const handleScanSuccess = useCallback(async (decodedText) => {
+  const now = Date.now();
+
+  // --- Duplicate Scan Protection ---
+  if (lastScanTimeRef.current && (now - lastScanTimeRef.current) < 1500) {
+    console.warn('[Scan] Bloqueado: escaneo demasiado rápido');
+    return;
+  }
+  lastScanTimeRef.current = now;
+
+  console.log('[Scan] Procesando QR:', decodedText);
+
+  // --- Safety Checks ---
   if (!isMounted.current || scanningPausedRef.current || !qrScanner.current || !eventoSeleccionado) {
     console.warn('[Scan] Condiciones no cumplidas, abortando');
     return;
   }
 
-  // 1. Extraer y normalizar código
-  const ticketCode = extractTicketCode(normalizeUrl(decodedText));
-  const eventId = String(eventoSeleccionado.event_id);
-  console.log('[Scan] Datos extraídos:', { ticketCode, eventId });
+  // --- Normalize Ticket Code ---
+  const ticketCode = extractTicketCode(decodedText);
+  if (!ticketCode) {
+    console.warn('[Scan] No se pudo extraer el ticket del QR');
+    showErrorOverlay('Ticket inválido');
+    return;
+  }
+  const normalizedTicket = ticketCode.toLowerCase().trim();
+  console.log('[Scan] Ticket normalizado:', normalizedTicket);
 
-  // 2. Iniciar estado de procesamiento
+  const eventId = String(eventoSeleccionado.event_id);
+  const asistentesEvento = asistentes[eventId] || [];
+
+  // --- Duplicate Ticket Check ---
+  if (lastProcessedTicketRef.current === normalizedTicket) {
+    console.warn('[Scan] Ticket duplicado, se omite');
+    return;
+  }
+
+  // --- Pause Scanner ---
   scanningPausedRef.current = true;
   lastScannedRef.current = ticketCode;
   setScanState(prev => ({
@@ -374,159 +408,114 @@ export default function ScanQR() {
     scannerState: Html5QrcodeScannerState.PAUSED
   }));
 
+  // --- Helper Functions ---
+  const showErrorOverlay = (message) => {
+    setScanState(prev => ({
+      ...prev,
+      validation: { status: 'error', mensaje: message, asistente: null },
+      showOverlay: true
+    }));
+  };
+
+  const showOverlay = (status, message, asistente = null) => {
+    setScanState(prev => ({
+      ...prev,
+      validation: { status, mensaje: message, asistente },
+      showOverlay: true
+    }));
+  };
+
   try {
-    // 3. Buscar en caché local
-    const asistentesEvento = asistentes[eventId] || [];
+    // --- Local Validation ---
     const asistenteLocal = asistentesEvento.find(a => 
-      [a.ticket_code, a.id].includes(ticketCode)
+      (a.ticket_code?.toLowerCase().trim() === normalizedTicket) || 
+      (String(a.id) === normalizedTicket)
     );
 
     if (asistenteLocal) {
       console.log('[Scan] Ticket local encontrado:', asistenteLocal.id);
-      
-      // Verificar si ya fue validado
+      lastProcessedTicketRef.current = normalizedTicket;
+
       if (asistenteLocal.status === 'SCANNED') {
-        setScanState(prev => ({
-          ...prev,
-          validation: {
-            status: "ya-validado",
-            mensaje: `Ticket ya validado: ${asistenteLocal.nombre}`,
-            asistente: asistenteLocal
-          },
-          showOverlay: true
-        }));
+        showOverlay("ya-validado", `Ticket ya validado: ${asistenteLocal.nombre}`, asistenteLocal);
         return;
       }
 
-      // 4. Actualización en backend
-      const apiResponse = await ScannerAPI.markAsScanned(asistenteLocal.id);
-      console.log('[Scan] Respuesta de API:', apiResponse);
+      // --- Update Backend ---
+      const [apiResponse] = await Promise.all([
+        ScannerAPI.markAsScanned(asistenteLocal.id),
+        updateAsistenteStatus(asistenteLocal.id, 'SCANNED')
+      ]);
 
-      if (!apiResponse.success) {
-        throw new Error(apiResponse.message || 'Error al actualizar en backend');
-      }
+      if (!apiResponse.success) throw new Error(apiResponse.message || 'Error al actualizar en backend');
 
-      // 5. Actualizar estado local
-      await updateAsistenteStatus(asistenteLocal.id, 'SCANNED');
-      addToBuffer({
-        ticket_id: asistenteLocal.id,
-        event_id: eventId,
-        timestamp: new Date().toISOString()
+      addToBuffer({ 
+        ticket_id: asistenteLocal.id, 
+        event_id: eventId, 
+        timestamp: new Date().toISOString() 
       });
 
-      setScanState(prev => ({
-        ...prev,
-        validation: {
-          status: "valid",
-          mensaje: `Validado: ${asistenteLocal.nombre}`,
-          asistente: asistenteLocal
-        },
-        showOverlay: true
-      }));
-
-    } else {
-      console.log('[Scan] Ticket no en caché, validando con API...');
-      
-      // 6. Validar con backend
-      const checkResult = await ScannerAPI.checkTicketStatus(eventId, ticketCode);
-      console.log('[Scan] Resultado API:', checkResult);
-
-      if (!checkResult.success) {
-        throw new Error(checkResult.message || 'Error al validar ticket');
-      }
-
-      // Manejo de estados según respuesta del backend
-      if (checkResult.data?.status === 'invalid_event') {
-        setScanState(prev => ({
-          ...prev,
-          validation: {
-            status: "mismatch",
-            mensaje: "Ticket no pertenece a este evento",
-            asistente: null
-          },
-          showOverlay: true
-        }));
-        return;
-      }
-
-      if (!checkResult.data?.valid) {
-        throw new Error(checkResult.data?.message || 'Ticket inválido');
-      }
-
-      if (checkResult.data?.already_scanned) {
-        setScanState(prev => ({
-          ...prev,
-          validation: {
-            status: "ya-validado",
-            mensaje: `Ticket ya validado: ${checkResult.data.asistente.nombre}`,
-            asistente: checkResult.data.asistente
-          },
-          showOverlay: true
-        }));
-        return;
-      }
-
-      // 7. Actualizar backend
-      const scanResponse = await ScannerAPI.markAsScanned(checkResult.data.asistente.id);
-      if (!scanResponse.success) {
-        throw new Error(scanResponse.message || 'Error al registrar escaneo');
-      }
-
-      // 8. Actualizar estado local
-      const nuevoAsistente = {
-        ...checkResult.data.asistente,
-        status: 'SCANNED'
-      };
-
-      setAsistentes(prev => ({
-        ...prev,
-        [eventId]: [...(prev[eventId] || []), nuevoAsistente]
-      }));
-
-      addToBuffer({
-        ticket_id: nuevoAsistente.id,
-        event_id: eventId,
-        timestamp: new Date().toISOString()
-      });
-
-      setScanState(prev => ({
-        ...prev,
-        validation: {
-          status: "valid",
-          mensaje: `Validado: ${nuevoAsistente.nombre}`,
-          asistente: nuevoAsistente
-        },
-        showOverlay: true
-      }));
+      showOverlay("valid", `Validado: ${asistenteLocal.nombre}`, asistenteLocal);
+      return;
     }
+
+    // --- Backend Validation ---
+    const checkResult = await ScannerAPI.checkTicketStatus(eventId, ticketCode);
+    if (!checkResult.success) throw new Error(checkResult.message || 'Error al validar ticket');
+
+    if (checkResult.data?.status === 'invalid_event') {
+      showOverlay("mismatch", "Ticket no pertenece a este evento");
+      return;
+    }
+
+    if (!checkResult.data?.valid) {
+      throw new Error(checkResult.data?.message || 'Ticket inválido');
+    }
+
+    if (checkResult.data?.already_scanned) {
+      showOverlay("ya-validado", `Ticket ya validado: ${checkResult.data.asistente.nombre}`, checkResult.data.asistente);
+      return;
+    }
+
+    // --- Register Scan ---
+    const nuevoAsistente = { ...checkResult.data.asistente, status: 'SCANNED' };
+    lastProcessedTicketRef.current = normalizedTicket;
+
+    await Promise.all([
+      ScannerAPI.markAsScanned(nuevoAsistente.id),
+      updateAsistenteStatus(nuevoAsistente.id, 'SCANNED', nuevoAsistente)
+    ]);
+
+    addToBuffer({ 
+      ticket_id: nuevoAsistente.id, 
+      event_id: eventId, 
+      timestamp: new Date().toISOString() 
+    });
+
+    showOverlay("valid", `Validado: ${nuevoAsistente.nombre}`, nuevoAsistente);
 
   } catch (error) {
     console.error('[Scan] Error crítico:', error);
-    setScanState(prev => ({
-      ...prev,
-      validation: {
-        status: "error",
-        mensaje: error.message || "Error en validación"
-      },
-      showOverlay: true
-    }));
+    showErrorOverlay(error.message || "Error en validación");
   } finally {
-    // 9. Reiniciar escáner después de delay
-    setTimeout(() => {
+    // --- Resume Scanner ---
+    const resumeScanner = () => {
       if (isMounted.current) {
         scanningPausedRef.current = false;
-        setScanState(prev => ({
-          ...prev,
-          scanningPaused: false,
-          scannerState: Html5QrcodeScannerState.SCANNING
+        setScanState(prev => ({ 
+          ...prev, 
+          scanningPaused: false, 
+          scannerState: Html5QrcodeScannerState.SCANNING 
         }));
-        if (qrScanner.current?.getState?.() === Html5QrcodeScannerState.PAUSED) {
-          qrScanner.current.resume().catch(() => {});
-        }
+        qrScanner.current?.resume?.().catch(console.error);
       }
-    }, 1500);
+    };
+    setTimeout(resumeScanner, 1500);
   }
-}, [eventoSeleccionado, asistentes, updateAsistenteStatus, addToBuffer, setAsistentes]);
+}, [eventoSeleccionado, asistentes, updateAsistenteStatus, addToBuffer]);
+
+
+
 
   const resetScannerState = useCallback(() => {
     console.log('[resetScannerState] Reseteando estado del escáner');
@@ -649,6 +638,9 @@ export default function ScanQR() {
 
     const syncAutomatically = async () => {
   // 1. Validación inicial mejorada
+    const eventId = String(eventoSeleccionado.event_id);
+    const asistentesEvento = asistentes[eventId] || [];
+
   if (!eventoSeleccionado?.event_id || isSyncing) {
     console.log('[syncAutomatically] Condiciones no cumplidas para sincronizar');
     return;
@@ -661,8 +653,7 @@ export default function ScanQR() {
     return;
   }
 
-  isSyncing = true;
-  const eventId = String(eventoSeleccionado.event_id); // Normalización clave
+  isSyncing = true; 
   
   try {
     console.log('[syncAutomatically] Iniciando sincronización para:', eventId);
@@ -677,6 +668,7 @@ export default function ScanQR() {
     }
 
     console.log('[syncAutomatically] Asistentes recibidos:', attendees.length, 'Ejemplo:', attendees.slice(0, 2));
+    console.log("Asistentes cargados:", asistentesEvento);
 
     // 4. Actualización de estado con triple verificación
     setAsistentes(prev => {

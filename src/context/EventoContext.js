@@ -175,7 +175,7 @@ export const EventoProvider = ({ children }) => {
   });
 
   return true;
-}, [eventoSeleccionado, asistentes]);
+}, [eventoSeleccionado, setAsistentes, setAsistentesIndex]);
 
   // Agregar al buffer (optimizada)
   const addToBuffer = useCallback((scanData) => {
