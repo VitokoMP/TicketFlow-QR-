@@ -73,15 +73,19 @@ export const EventoProvider = ({ children }) => {
 
   const fetchAsistentes = async (eventId) => {
   try {
-     setLoading(true);
+    setLoading(true);
+    console.log("🚀 [fetchAsistentes] Iniciando fetch para eventId:", eventId);
+
     const { success, data, message } = await ScannerAPI.syncAttendees(eventId);
-    
+    console.log("📡 [fetchAsistentes] Respuesta API:", { success, data, message });
+
     if (!success) {
       throw new Error(message || 'Error al sincronizar asistentes');
     }
 
     const attendees = Array.isArray(data?.asistentes) ? data.asistentes : 
-                    Array.isArray(data?.attendees) ? data.attendees : [];
+                      Array.isArray(data?.attendees) ? data.attendees : [];
+    console.log("📋 [fetchAsistentes] Raw attendees:", attendees);
 
     // Normalización de datos
     const normalized = attendees.map(a => ({
@@ -90,31 +94,38 @@ export const EventoProvider = ({ children }) => {
       nombre: a.nombre || 'Invitado',
       status: a.status || 'PENDING'
     }));
+    console.log("✅ [fetchAsistentes] Normalizados:", normalized);
 
     // Actualiza ambos estados
-    setAsistentes(prev => ({
-      ...prev,
-      [eventId]: normalized
-    }));
+    setAsistentes(prev => {
+      const nuevo = { ...prev, [eventId]: normalized };
+      console.log("🗂 [fetchAsistentes] setAsistentes:", nuevo);
+      return nuevo;
+    });
 
-    setAsistentesIndex(prev => ({
-      ...prev,
-      [eventId]: normalized.reduce((acc, a) => {
-        if (a.ticket_code) acc[a.ticket_code] = a;
-        if (a.id) acc[a.id] = a;
-        return acc;
-      }, {})
-    }));
+    setAsistentesIndex(prev => {
+      const nuevo = {
+        ...prev,
+        [eventId]: normalized.reduce((acc, a) => {
+          if (a.ticket_code) acc[a.ticket_code] = a;
+          if (a.id) acc[a.id] = a;
+          return acc;
+        }, {})
+      };
+      console.log("🔑 [fetchAsistentes] setAsistentesIndex:", nuevo);
+      return nuevo;
+    });
 
     return normalized;
   } catch (error) {
-    console.error('❌ fetchAsistentes error:', error);
+    console.error('❌ [fetchAsistentes] error:', error);
     showToast(error.message, 'error');
     return [];
   } finally {
     setLoading(false);
   }
 };
+
 
   const selectEvento = async (evento) => {
   setLoading(true);
@@ -138,44 +149,54 @@ export const EventoProvider = ({ children }) => {
   // ========== NUEVAS FUNCIONES OPTIMIZADAS ==========
   // Actualización individual de asistente (nueva)
   const updateAsistenteStatus = useCallback((asistenteId, newStatus) => {
-   console.log("Estado actualizado:", asistentes[eventoSeleccionado.event_id].find(a => a.id === asistenteId));
+  if (!eventoSeleccionado) {
+    console.warn("No hay evento seleccionado");
+    return false;
+  }
 
-  if (!eventoSeleccionado) return false;
+  const currentAsistentes = asistentes[eventoSeleccionado.event_id] || [];
+  const asistente = currentAsistentes.find(a => a.id === asistenteId);
 
-  setAsistentes(prev => {
-    const current = prev[eventoSeleccionado.event_id] || [];
-    const index = current.findIndex(a => a.id === asistenteId);
-    
-    if (index === -1 || current[index].status === newStatus) {
-      return prev;
-    }
+  if (!asistente) {
+    console.warn("Asistente no encontrado en memoria:", asistenteId);
+    return false;
+  }
 
-    // Actualización optimizada
-    const updated = [...current];
-    updated[index] = { ...updated[index], status: newStatus };
+  if (asistente.status === newStatus) {
+    console.log("El asistente ya tiene el mismo estado:", newStatus);
+    return false;
+  }
 
-    // Actualiza el índice
-    setAsistentesIndex(prev => {
-      const eventIndex = prev[eventoSeleccionado.event_id] || {};
-      const asistente = eventIndex[asistenteId];
-      
-      return {
-        ...prev,
-        [eventoSeleccionado.event_id]: {
-          ...eventIndex,
-          [asistenteId]: { ...asistente, status: newStatus },
-          ...(asistente?.ticket_code ? { 
-            [asistente.ticket_code]: { ...asistente, status: newStatus } 
-          } : {})
-        }
-      };
-    });
+  // Actualización optimizada
+  const updated = [...currentAsistentes];
+  const index = updated.findIndex(a => a.id === asistenteId);
+  updated[index] = { ...updated[index], status: newStatus };
 
-    return { ...prev, [eventoSeleccionado.event_id]: updated };
+  // Actualiza estado principal
+  setAsistentes(prev => ({
+    ...prev,
+    [eventoSeleccionado.event_id]: updated
+  }));
+
+  // Actualiza índice para búsqueda rápida
+  setAsistentesIndex(prev => {
+    const eventIndex = prev[eventoSeleccionado.event_id] || {};
+    return {
+      ...prev,
+      [eventoSeleccionado.event_id]: {
+        ...eventIndex,
+        [asistenteId]: { ...asistente, status: newStatus },
+        ...(asistente.ticket_code
+          ? { [asistente.ticket_code]: { ...asistente, status: newStatus } }
+          : {})
+      }
+    };
   });
 
+  console.log("✅ Estado actualizado para asistente:", asistenteId, "->", newStatus);
   return true;
-}, [eventoSeleccionado, setAsistentes, setAsistentesIndex]);
+}, [eventoSeleccionado, asistentes, setAsistentes, setAsistentesIndex]);
+
 
   // Agregar al buffer (optimizada)
   const addToBuffer = useCallback((scanData) => {

@@ -361,11 +361,9 @@ const extractTicketCode = useCallback((qrText) => {
     }, "restartScanner");
   }, [runSerial, safeStopScanner, startScannerCore]);
 
-   ///
-const handleScanSuccess = useCallback(async (decodedText) => {
+   /// handleScanSuccess optimizada MVP 1.4.0
+  const handleScanSuccess = useCallback(async (decodedText) => {
   const now = Date.now();
-
-  // --- Duplicate Scan Protection ---
   if (lastScanTimeRef.current && (now - lastScanTimeRef.current) < 1500) {
     console.warn('[Scan] Bloqueado: escaneo demasiado rápido');
     return;
@@ -374,48 +372,41 @@ const handleScanSuccess = useCallback(async (decodedText) => {
 
   console.log('[Scan] Procesando QR:', decodedText);
 
-  // --- Safety Checks ---
   if (!isMounted.current || scanningPausedRef.current || !qrScanner.current || !eventoSeleccionado) {
     console.warn('[Scan] Condiciones no cumplidas, abortando');
     return;
   }
 
-  // --- Normalize Ticket Code ---
-  const ticketCode = extractTicketCode(decodedText);
-  if (!ticketCode) {
-    console.warn('[Scan] No se pudo extraer el ticket del QR');
-    showErrorOverlay('Ticket inválido');
-    return;
+  // --- Normalización ---
+  const normalizeTicket = (code) => code?.toLowerCase().trim();
+  let ticketCode;
+  try {
+    const url = new URL(decodedText);
+    let path = url.pathname.replace(/\/$/, '');
+    ticketCode = path.split('/').pop();
+  } catch {
+    ticketCode = decodedText;
   }
-  const normalizedTicket = ticketCode.toLowerCase().trim();
-  console.log('[Scan] Ticket normalizado:', normalizedTicket);
+  const normalizedTicket = normalizeTicket(ticketCode);
 
-  const eventId = String(eventoSeleccionado.event_id);
-  const asistentesEvento = asistentes[eventId] || [];
-
-  // --- Duplicate Ticket Check ---
-  if (lastProcessedTicketRef.current === normalizedTicket) {
-    console.warn('[Scan] Ticket duplicado, se omite');
-    return;
-  }
-
-  // --- Pause Scanner ---
-  scanningPausedRef.current = true;
-  lastScannedRef.current = ticketCode;
-  setScanState(prev => ({
-    ...prev,
-    scanningPaused: true,
-    scannerState: Html5QrcodeScannerState.PAUSED
-  }));
-
-  // --- Helper Functions ---
-  const showErrorOverlay = (message) => {
+  if (!normalizedTicket) {
+    console.warn('[Scan] No se pudo extraer ticket');
     setScanState(prev => ({
       ...prev,
-      validation: { status: 'error', mensaje: message, asistente: null },
+      validation: { status: 'error', mensaje: 'Ticket inválido', asistente: null },
       showOverlay: true
     }));
-  };
+    return;
+  }
+
+  // --- Verificar duplicados ---
+  if (lastProcessedTicketRef.current === normalizedTicket) {
+    console.warn('[Scan] Bloqueado: ticket duplicado');
+    return;
+  }
+
+  scanningPausedRef.current = true;
+  setScanState(prev => ({ ...prev, scanningPaused: true, scannerState: Html5QrcodeScannerState.PAUSED }));
 
   const showOverlay = (status, message, asistente = null) => {
     setScanState(prev => ({
@@ -426,93 +417,74 @@ const handleScanSuccess = useCallback(async (decodedText) => {
   };
 
   try {
-    // --- Local Validation ---
-    const asistenteLocal = asistentesEvento.find(a => 
-      (a.ticket_code?.toLowerCase().trim() === normalizedTicket) || 
-      (String(a.id) === normalizedTicket)
+    const eventId = String(eventoSeleccionado.event_id);
+    const asistentesEvento = asistentes[eventId] || [];
+
+    // --- Validación local ---
+    const asistenteLocal = asistentesEvento.find(a =>
+      normalizeTicket(a.ticket_code) === normalizedTicket || String(a.id) === normalizedTicket
     );
 
     if (asistenteLocal) {
-      console.log('[Scan] Ticket local encontrado:', asistenteLocal.id);
       lastProcessedTicketRef.current = normalizedTicket;
 
       if (asistenteLocal.status === 'SCANNED') {
-        showOverlay("ya-validado", `Ticket ya validado: ${asistenteLocal.nombre}`, asistenteLocal);
+        showOverlay('ya-validado', `Ticket ya validado: ${asistenteLocal.nombre}`, asistenteLocal);
         return;
       }
 
-      // --- Update Backend ---
-      const [apiResponse] = await Promise.all([
+      await Promise.all([
         ScannerAPI.markAsScanned(asistenteLocal.id),
         updateAsistenteStatus(asistenteLocal.id, 'SCANNED')
       ]);
 
-      if (!apiResponse.success) throw new Error(apiResponse.message || 'Error al actualizar en backend');
-
-      addToBuffer({ 
-        ticket_id: asistenteLocal.id, 
-        event_id: eventId, 
-        timestamp: new Date().toISOString() 
-      });
-
-      showOverlay("valid", `Validado: ${asistenteLocal.nombre}`, asistenteLocal);
+      addToBuffer({ ticket_id: asistenteLocal.id, event_id: eventId, timestamp: new Date().toISOString() });
+      showOverlay('valid', `Validado: ${asistenteLocal.nombre}`, asistenteLocal);
       return;
     }
 
-    // --- Backend Validation ---
+    // --- Validación backend ---
     const checkResult = await ScannerAPI.checkTicketStatus(eventId, ticketCode);
     if (!checkResult.success) throw new Error(checkResult.message || 'Error al validar ticket');
 
-    if (checkResult.data?.status === 'invalid_event') {
-      showOverlay("mismatch", "Ticket no pertenece a este evento");
-      return;
-    }
+    const backendAsistente = checkResult.data?.asistente;
+    const backendStatus = checkResult.data?.status;
 
-    if (!checkResult.data?.valid) {
-      throw new Error(checkResult.data?.message || 'Ticket inválido');
+    if (backendStatus === 'invalid_event') {
+      showOverlay('mismatch', 'Ticket no pertenece a este evento');
+      return;
     }
 
     if (checkResult.data?.already_scanned) {
-      showOverlay("ya-validado", `Ticket ya validado: ${checkResult.data.asistente.nombre}`, checkResult.data.asistente);
+      showOverlay('ya-validado', `Ticket ya validado: ${backendAsistente.nombre}`, backendAsistente);
       return;
     }
 
-    // --- Register Scan ---
-    const nuevoAsistente = { ...checkResult.data.asistente, status: 'SCANNED' };
+    // --- Registrar scan válido ---
     lastProcessedTicketRef.current = normalizedTicket;
-
     await Promise.all([
-      ScannerAPI.markAsScanned(nuevoAsistente.id),
-      updateAsistenteStatus(nuevoAsistente.id, 'SCANNED', nuevoAsistente)
+      ScannerAPI.markAsScanned(backendAsistente.id),
+      updateAsistenteStatus(backendAsistente.id, 'SCANNED', backendAsistente)
     ]);
 
-    addToBuffer({ 
-      ticket_id: nuevoAsistente.id, 
-      event_id: eventId, 
-      timestamp: new Date().toISOString() 
-    });
-
-    showOverlay("valid", `Validado: ${nuevoAsistente.nombre}`, nuevoAsistente);
+    addToBuffer({ ticket_id: backendAsistente.id, event_id: eventId, timestamp: new Date().toISOString() });
+    showOverlay('valid', `Validado: ${backendAsistente.nombre}`, backendAsistente);
 
   } catch (error) {
     console.error('[Scan] Error crítico:', error);
-    showErrorOverlay(error.message || "Error en validación");
+    showOverlay('error', error.message || 'Error en validación');
   } finally {
-    // --- Resume Scanner ---
-    const resumeScanner = () => {
-      if (isMounted.current) {
-        scanningPausedRef.current = false;
-        setScanState(prev => ({ 
-          ...prev, 
-          scanningPaused: false, 
-          scannerState: Html5QrcodeScannerState.SCANNING 
-        }));
+    // --- Resume scanner de forma segura ---
+    setTimeout(() => {
+      if (!isMounted.current) return;
+      scanningPausedRef.current = false;
+      setScanState(prev => ({ ...prev, scanningPaused: false, scannerState: Html5QrcodeScannerState.SCANNING }));
+      qrScanner.current?.getState() === Html5QrcodeScannerState.PAUSED &&
         qrScanner.current?.resume?.().catch(console.error);
-      }
-    };
-    setTimeout(resumeScanner, 1500);
+    }, 1500);
   }
-}, [eventoSeleccionado, asistentes, updateAsistenteStatus, addToBuffer]);
+}, [eventoSeleccionado, updateAsistenteStatus, addToBuffer]);
+
 
 
 
