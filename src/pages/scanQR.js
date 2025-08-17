@@ -6,17 +6,17 @@ import checkImg from '../public/img/check.png';
 import crossImg from '../public/img/cross.png';
 import warningImg from '../public/img/warning.png';
 import '../public/css/ScanQR.css';
-  
-const OPTIMAL_SCAN_DELAY = 200; // Tiempo mínimo entre escaneos (para feedback visual)
-const API_TIMEOUT = 1000; // Timeout para llamadas API
- 
-const MIN_DISPLAY_TIME = 800; // 1.5 segundos (antes era 400ms)
-const ERROR_DISPLAY_TIME = 1000; // 2 segundos para errores
+
+const OPTIMAL_SCAN_DELAY = 200;
+const API_TIMEOUT = 1000;
+const MIN_DISPLAY_TIME = 800;
+const ERROR_DISPLAY_TIME = 1000;
 const STOP_RETRY_MAX = 8;
-const STOP_RETRY_BASE_MS = 120; // backoff base (120ms, 240ms, 480ms ...)
-const MAX_BACKOFF_MS = 10000; // 10 segundos máximo para backoff
+const STOP_RETRY_BASE_MS = 120;
+const MAX_BACKOFF_MS = 10000;
 
 export default function ScanQR() {
+  console.log('[ScanQR] Componente montándose');
   const {
     eventos = [],
     asistentes = {},
@@ -26,7 +26,13 @@ export default function ScanQR() {
     selectEvento,
     updateAsistenteStatus,
     addToBuffer,
-  } = useEvento(); 
+  } = useEvento();
+
+  console.log('[ScanQR] Contexto cargado', {
+    eventosCount: eventos.length,
+    asistentesCount: Object.keys(asistentes).length,
+    eventoSeleccionado
+  });
 
   const [scanState, setScanState] = useState({
     cameraActive: false,
@@ -37,202 +43,191 @@ export default function ScanQR() {
     scannerState: Html5QrcodeScannerState.NOT_STARTED
   });
 
+  console.log('[ScanQR] Estado inicial:', scanState);
+
   // Refs
   const qrRef = useRef(null);
   const qrScanner = useRef(null);
-  const timeoutRef = useRef(null);           // overlay/restart timer
-  const retryTimeoutRef = useRef(null);      // start backoff timer
+  const timeoutRef = useRef(null);
+  const retryTimeoutRef = useRef(null);
   const lastEventIdRef = useRef(null);
   const isMounted = useRef(true);
   const lastScannedRef = useRef("");
-  const scanningPausedRef = useRef(false); 
-  const validationRef = useRef(null); 
-
-  // Serializador de operaciones (evita start/stop concurrentes)
+  const scanningPausedRef = useRef(false);
+  const validationRef = useRef(null);
   const opLockRef = useRef(false);
+  const startAttemptsRef = useRef(0);
+
   const runSerial = useCallback(async (fn, label = "op") => {
+    console.log(`[runSerial] Iniciando operación serializada: ${label}`);
     if (opLockRef.current) {
-      // Evita carreras: ignoramos operaciones redundantes
-      console.warn(`Omitiendo ${label}: operación previa en curso`);
+      console.warn(`[runSerial] Omitiendo ${label}: operación previa en curso`);
       return;
     }
     opLockRef.current = true;
     try {
+      console.log(`[runSerial] Ejecutando ${label}`);
       return await fn();
+    } catch (error) {
+      console.error(`[runSerial] Error en ${label}:`, error);
+      throw error;
     } finally {
       opLockRef.current = false;
+      console.log(`[runSerial] Operación ${label} completada`);
     }
   }, []);
 
-  // Intentos de inicio con backoff
-  const startAttemptsRef = useRef(0);
-
-  // Helper: ejecutar función solo si está montado
   const safeCall = useCallback(async (fn, label = "") => {
-    if (!isMounted.current) return;
+    console.log(`[safeCall] Llamada segura iniciada: ${label}`);
+    if (!isMounted.current) {
+      console.warn('[safeCall] Componente no montado, omitiendo llamada');
+      return;
+    }
     try {
       const result = await fn();
+      console.log(`[safeCall] Llamada ${label} exitosa`);
       return isMounted.current ? result : undefined;
     } catch (err) {
       if (isMounted.current) {
-        // AbortError es esperado cuando el stream se corta bruscamente
         if (err?.name === "AbortError") {
-          console.warn(`Operación abortada (${label})`);
+          console.warn(`[safeCall] Operación abortada (${label})`);
           return;
         }
-        console.warn(`Error en ${label || "operación"}:`, err?.message || err);
+        console.error(`[safeCall] Error en ${label || "operación"}:`, err?.message || err);
       }
     }
   }, []);
 
   const showToast = (message, type) => {
-    console.log(`${type.toUpperCase()}: ${message}`);
+    console.log(`[TOAST] ${type.toUpperCase()}: ${message}`);
   };
 
   const normalizeUrl = useCallback((urlString) => {
+    console.log('[normalizeUrl] Normalizando URL:', urlString);
     try {
       let url = new URL(urlString);
       if (url.protocol === "http:") url.protocol = "https:";
+      console.log('[normalizeUrl] URL normalizada:', url.toString());
       return url.toString();
-    } catch {
+    } catch (error) {
+      console.warn('[normalizeUrl] No es una URL válida, se usa texto plano');
       return urlString;
     }
   }, []);
 
   const extractTicketCode = useCallback((qrText) => {
+    console.log('[extractTicketCode] Extrayendo código de:', qrText);
     try {
       const url = new URL(qrText);
       let path = url.pathname;
       if (path.endsWith('/')) path = path.slice(0, -1);
-      return path.split('/').pop();
-    } catch {
+      const code = path.split('/').pop();
+      console.log('[extractTicketCode] Código extraído:', code);
+      return code;
+    } catch (error) {
+      console.warn('[extractTicketCode] No es una URL, se usa texto completo');
       return qrText;
     }
   }, []);
 
-  // Función segura para detener el escáner// Constants para reintentos
-
-const safeStopScanner = useCallback(async () => { 
-  // Modificar el log inicial para solo mostrar en desarrollo
-  if (process.env.NODE_ENV === 'development' && !qrScanner.current) {
-    console.debug("safeStopScanner: no hay instancia de qrScanner");
-    return;
-  } 
-
-  // Guardar referencia local para que no cambie en medio de la operación
-  const scanner = qrScanner.current;
-  const container = document.getElementById("qr-reader");
-
-  if (!isMounted.current) {
-    console.debug("safeStopScanner: componente no montado, abortando.");
-    return;
-  }
-
-  // Helper: chequear que el contenedor sigue en el DOM
-  const containerStillInDOM = () => !!container && document.body.contains(container);
-
-  // Helper: obtener estado seguro
-  const getStateSafe = () => {
-    try {
-      return scanner?.getState?.();
-    } catch (e) {
-      console.warn("getState falló:", e?.message || e);
-      return undefined;
-    }
-  };
-
-  // Si está en transición, reintentar hasta que no lo esté (con límite)
-  let attempt = 0;
-  while (isMounted.current) {
-    const state = getStateSafe();
-
-    // Si ya NO está en modo SCANNING/STARTING/PENDING TRANSITION, rompemos
-    // Los valores relevantes documentados: NOT_STARTED, SCANNING, PAUSED, etc.
-    // Queremos asegurarnos de que NO quede "scanning" activo antes de clear().
-    if (state === undefined) {
-      // Si getState falla, intentar stop de todos modos (lo atrapamos más abajo)
-      break;
+  const safeStopScanner = useCallback(async () => {
+    console.log('[safeStopScanner] Iniciando detención segura del escáner');
+    
+    if (!qrScanner.current) {
+      console.warn('[safeStopScanner] No hay instancia de qrScanner');
+      return;
     }
 
-    // Si no está SCANNING o está PAUSED o NOT_STARTED -> intentar stop/clear normalmente
-    if (state !== Html5QrcodeScannerState.SCANNING && state !== Html5QrcodeScannerState.NOT_STARTED) {
-      // no estamos en scanning o ya not started; salimos del bucle y avanzamos al stop/clear
-      break;
+    const scanner = qrScanner.current;
+    const container = document.getElementById("qr-reader");
+
+    if (!isMounted.current) {
+      console.warn('[safeStopScanner] Componente no montado, abortando');
+      return;
     }
 
-    // Si está SCANNING, intentamos stop pero hay que evitar "under transition"
-    try {
-      await scanner.stop();
-      console.debug("safeStopScanner: stop() resolvió OK desde bucle.");
-      break;
-    } catch (err) {
-      const msg = (err && (err.message || err)) || err;
-      // Si la librería reporta 'already under transition' u otro, esperamos y reintentamos
-      console.warn(`safeStopScanner: intento stop() fallo (int ${attempt}):`, msg);
+    const containerStillInDOM = () => !!container && document.body.contains(container);
+    const getStateSafe = () => {
+      try {
+        return scanner?.getState?.();
+      } catch (e) {
+        console.warn('[safeStopScanner] Error al obtener estado:', e?.message || e);
+        return undefined;
+      }
+    };
 
-      attempt++;
-      if (attempt >= STOP_RETRY_MAX) {
-        console.error("safeStopScanner: alcanzado máximo de reintentos para stop(), abortando.");
+    let attempt = 0;
+    while (isMounted.current) {
+      const state = getStateSafe();
+      console.log(`[safeStopScanner] Intento ${attempt}, estado actual:`, state);
+
+      if (state === undefined) {
         break;
       }
 
-      // Backoff simple
-      const waitMs = STOP_RETRY_BASE_MS * Math.pow(2, attempt - 1);
-      await new Promise(res => setTimeout(res, waitMs));
-      continue; // reintentar
-    }
-  } // end while
+      if (state !== Html5QrcodeScannerState.SCANNING && 
+          state !== Html5QrcodeScannerState.NOT_STARTED) {
+        console.log('[safeStopScanner] Estado adecuado para detener');
+        break;
+      }
 
-  // Si llegamos aquí, intentamos detener y limpiar de forma segura
-  try {
-    // Llamar stop() final (si aún puede ser llamado)
+      try {
+        await scanner.stop();
+        console.log('[safeStopScanner] Stop() exitoso desde bucle');
+        break;
+      } catch (err) {
+        console.warn(`[safeStopScanner] Error en stop() (intento ${attempt}):`, err?.message || err);
+        attempt++;
+        if (attempt >= STOP_RETRY_MAX) {
+          console.error('[safeStopScanner] Máximo de reintentos alcanzado');
+          break;
+        }
+
+        const waitMs = STOP_RETRY_BASE_MS * Math.pow(2, attempt - 1);
+        console.log(`[safeStopScanner] Esperando ${waitMs}ms antes de reintentar`);
+        await new Promise(res => setTimeout(res, waitMs));
+      }
+    }
+
     try {
       if (scanner && scanner.stop && typeof scanner.stop === "function") {
-        // Intentamos stop() si todavía parece necesario
         const s = getStateSafe();
+        console.log('[safeStopScanner] Estado final antes de stop():', s);
         if (s === Html5QrcodeScannerState.SCANNING || s === Html5QrcodeScannerState.PAUSED) {
           await safeCall(() => scanner.stop(), "finalStop");
         } else {
-          // Si no está SCANNING, llamar stop() puede fallar en algunos builds; intentamos solo si parece necesario
           try {
             await scanner.stop();
           } catch (e) {
-            // Ignorar fallos no críticos aquí, logger para depuración
-            console.debug("safeStopScanner: stop() final falló (no crítico):", e?.message || e);
+            console.debug('[safeStopScanner] Stop() final no crítico falló:', e?.message || e);
           }
         }
       }
     } catch (stopErr) {
-      console.warn("safeStopScanner: stopErr:", stopErr?.message || stopErr);
+      console.error('[safeStopScanner] Error en stop():', stopErr?.message || stopErr);
     }
 
-    // Finalmente clear() — SOLO si el contenedor sigue en el DOM y clear existe
     if (scanner && typeof scanner.clear === "function" && containerStillInDOM()) {
       try {
         await safeCall(() => {
-          // clear() suele ser síncrono, pero lo envolvemos en safeCall
           scanner.clear();
+          console.log('[safeStopScanner] Clear() ejecutado correctamente');
         }, "clearScanner");
-        console.debug("safeStopScanner: clear() ejecutado OK.");
       } catch (clearErr) {
-        // Mensaje típico: "Cannot clear while scan is ongoing, close it first."
-        console.warn("Error al limpiar el escáner:", clearErr?.message || clearErr);
-        // Intento defensivo extra: volver a intentar stop() y luego clear una vez
+        console.error('[safeStopScanner] Error al limpiar:', clearErr?.message || clearErr);
         try {
           if (scanner && scanner.stop) await scanner.stop();
           if (containerStillInDOM() && typeof scanner.clear === "function") scanner.clear();
         } catch (secondErr) {
-          console.error("safeStopScanner: fallback clear/stop falló:", secondErr?.message || secondErr);
+          console.error('[safeStopScanner] Error en limpieza de respaldo:', secondErr?.message || secondErr);
         }
       }
     } else {
-      console.debug("safeStopScanner: no se llamó clear(): no existe método o contenedor removido.");
+      console.warn('[safeStopScanner] No se pudo limpiar, contenedor o método no disponible');
     }
-  } catch (err) {
-    console.error("safeStopScanner: error en limpieza final:", err?.message || err);
-  } finally {
-    // Normalizar estado UI
+
     if (isMounted.current) {
+      console.log('[safeStopScanner] Actualizando estado UI a NOT_STARTED');
       setScanState(prev => ({
         ...prev,
         cameraActive: false,
@@ -240,34 +235,33 @@ const safeStopScanner = useCallback(async () => {
         scannerState: Html5QrcodeScannerState.NOT_STARTED
       }));
     }
-    // Eliminar referencia a la instancia solo si contenedor fue removido o clear logró ejecutarse
+
     try {
       if (!containerStillInDOM()) {
         qrScanner.current = null;
       } else {
-        // Si clear se ejecutó, es seguro liberar referencia también
         if (qrScanner.current && typeof qrScanner.current.getState === "function") {
           const finalState = qrScanner.current.getState();
           if (finalState === Html5QrcodeScannerState.NOT_STARTED) qrScanner.current = null;
         }
       }
     } catch (refErr) {
-      console.debug("safeStopScanner: error al limpiar referencia qrScanner:", refErr?.message || refErr);
+      console.warn('[safeStopScanner] Error al limpiar referencia:', refErr?.message || refErr);
     }
-  }
-}, [safeCall]);
+  }, [safeCall]);
 
-  // Iniciar el escáner (con cheques y backoff)
   const startScannerCore = useCallback(async () => {
+    console.log('[startScannerCore] Iniciando proceso de inicio del escáner');
     if (!eventoSeleccionado) {
+      console.warn('[startScannerCore] No hay evento seleccionado');
       showToast("Selecciona un evento antes de escanear", "warning");
       return;
     }
 
-    // Verificar contenedor DOM antes de crear instancia
     const container = document.getElementById("qr-reader");
+    console.log('[startScannerCore] Contenedor QR:', container);
     if (!container || !document.body.contains(container)) {
-      console.warn("Contenedor #qr-reader no disponible, abortando start.");
+      console.error('[startScannerCore] Contenedor no disponible');
       return;
     }
 
@@ -279,24 +273,25 @@ const safeStopScanner = useCallback(async () => {
     };
 
     try {
-      // Limpiar escáner existente
+      console.log('[startScannerCore] Deteniendo escáner previo');
       await safeStopScanner();
 
-      // Nueva instancia
+      console.log('[startScannerCore] Creando nueva instancia Html5Qrcode');
       qrScanner.current = new Html5Qrcode("qr-reader");
 
-      // Iniciar escáner
+      console.log('[startScannerCore] Iniciando escáner con config:', config);
       await qrScanner.current.start(
         { facingMode: "environment" },
         config,
         handleScanSuccess,
-        errMsg => console.warn("Error de escaneo:", errMsg)
+        errMsg => console.warn("[startScannerCore] Error de escaneo:", errMsg)
       );
 
-      // Arranque OK → reset de intentos
       startAttemptsRef.current = 0;
+      console.log('[startScannerCore] Escáner iniciado con éxito');
 
       if (isMounted.current) {
+        console.log('[startScannerCore] Actualizando estado a SCANNING');
         setScanState(prev => ({
           ...prev,
           cameraActive: true,
@@ -305,392 +300,475 @@ const safeStopScanner = useCallback(async () => {
         }));
       }
     } catch (err) {
-      console.error("Error iniciando escáner:", err);
+      console.error('[startScannerCore] Error al iniciar escáner:', err);
 
       if (isMounted.current) {
+        console.log('[startScannerCore] Actualizando estado a ERROR');
         setScanState(prev => ({ ...prev, scannerState: Html5QrcodeScannerState.ERROR }));
       }
 
-      // Mensajes más claros según tipo
       const name = err?.name;
       if (name === "NotAllowedError") {
+        console.error('[startScannerCore] Permiso de cámara denegado');
         showToast("Permiso de cámara denegado", "error");
       } else if (name === "NotFoundError") {
+        console.error('[startScannerCore] No se encontró cámara');
         showToast("No se encontró cámara disponible", "error");
       } else if (name === "AbortError") {
-        console.warn("Inicio abortado por el navegador/sistema");
+        console.warn('[startScannerCore] Inicio abortado por navegador');
       } else {
+        console.error('[startScannerCore] Error desconocido al iniciar cámara');
         showToast("No se pudo iniciar la cámara", "error");
       }
 
-      // Backoff exponencial (hasta 10s)
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
       const attempt = ++startAttemptsRef.current;
       const delay = Math.min(1000 * Math.pow(2, attempt - 1), MAX_BACKOFF_MS);
 
+      console.log(`[startScannerCore] Programando reintento en ${delay}ms (intento ${attempt})`);
       retryTimeoutRef.current = setTimeout(() => {
         if (isMounted.current && eventoSeleccionado) {
-          // Usar serializador para no pisar otras ops
           runSerial(startScannerCore, `startScanner(backoff ${attempt})`);
         }
       }, delay);
     }
   }, [eventoSeleccionado, runSerial, safeStopScanner]);
 
-  // Wrappers serializados públicos
   const startScanner = useCallback(async () => {
+    console.log('[startScanner] Llamando a startScanner serializado');
     return runSerial(startScannerCore, "startScanner");
   }, [runSerial, startScannerCore]);
 
   const stopScanner = useCallback(async () => {
+    console.log('[stopScanner] Llamando a stopScanner serializado');
     return runSerial(safeStopScanner, "stopScanner");
   }, [runSerial, safeStopScanner]);
 
   const restartScanner = useCallback(async () => {
+    console.log('[restartScanner] Reiniciando escáner');
     return runSerial(async () => {
       await safeStopScanner();
       await startScannerCore();
     }, "restartScanner");
   }, [runSerial, safeStopScanner, startScannerCore]);
 
-const handleScanSuccess = useCallback(async (decodedText) => {
+  const handleScanSuccess = useCallback(async (decodedText) => {
+  console.log('[Scan] Iniciando procesamiento de QR:', decodedText);
+  
   if (!isMounted.current || scanningPausedRef.current || !qrScanner.current || !eventoSeleccionado) {
+    console.warn('[Scan] Condiciones no cumplidas, abortando');
     return;
   }
 
+  // 1. Extraer y normalizar código
   const ticketCode = extractTicketCode(normalizeUrl(decodedText));
-  if (!ticketCode || ticketCode === lastScannedRef.current) return;
+  const eventId = String(eventoSeleccionado.event_id);
+  console.log('[Scan] Datos extraídos:', { ticketCode, eventId });
 
-  // Bloqueo y preparación del estado
+  // 2. Iniciar estado de procesamiento
   scanningPausedRef.current = true;
   lastScannedRef.current = ticketCode;
-  const scanStartTime = performance.now();
-
   setScanState(prev => ({
     ...prev,
     scanningPaused: true,
-    lastScanned: ticketCode,
-    validation: null,
-    showOverlay: false,
     scannerState: Html5QrcodeScannerState.PAUSED
   }));
 
-  // Limpieza de timeout previo
-  if (timeoutRef.current) {
-    clearTimeout(timeoutRef.current);
-    timeoutRef.current = null;
-  }
-
   try {
-    // 1. Pausa segura del escáner
-    if (qrScanner.current && typeof qrScanner.current.pause === 'function') {
-      await safeCall(() => qrScanner.current.pause());
-    }
-
-    // 2. Procesamiento del ticket
-    let validationState;
-    const asistentesEvento = asistentes[eventoSeleccionado.event_id] || [];
+    // 3. Buscar en caché local
+    const asistentesEvento = asistentes[eventId] || [];
     const asistenteLocal = asistentesEvento.find(a => 
-      a.ticket_code === ticketCode || a.id === ticketCode
+      [a.ticket_code, a.id].includes(ticketCode)
     );
 
     if (asistenteLocal) {
-      // Caso 1: Ticket en caché local
+      console.log('[Scan] Ticket local encontrado:', asistenteLocal.id);
+      
+      // Verificar si ya fue validado
       if (asistenteLocal.status === 'SCANNED') {
-        validationState = {
-          status: "ya-validado",
-          mensaje: `Ticket ya escaneado (${asistenteLocal.nombre || ''})`,
-          asistente: asistenteLocal,
-          timestamp: Date.now()
-        };
-      } else {
-        // Actualización optimizada
-        await updateAsistenteStatus(asistenteLocal.id, 'SCANNED');
-        addToBuffer({
-          ticket_id: asistenteLocal.id,
-          event_id: eventoSeleccionado.event_id,
-          timestamp: new Date().toISOString()
-        });
-        
-        validationState = {
-          status: "valid",
-          mensaje: `Entrada válida - ${asistenteLocal.nombre || ''}`,
-          asistente: asistenteLocal,
-          timestamp: Date.now()
-        };
+        setScanState(prev => ({
+          ...prev,
+          validation: {
+            status: "ya-validado",
+            mensaje: `Ticket ya validado: ${asistenteLocal.nombre}`,
+            asistente: asistenteLocal
+          },
+          showOverlay: true
+        }));
+        return;
       }
-    } else {
-      // Caso 2: Validación con API
-      const checkResult = await ScannerAPI.checkTicketStatus(
-        eventoSeleccionado.event_id, 
-        ticketCode
-      );
 
-      if (checkResult.success && checkResult.status === "PENDING") {
-        setAsistentes(prev => {
-          const currentList = prev[eventoSeleccionado.event_id] || [];
-          return {
-            ...prev,
-            [eventoSeleccionado.event_id]: [
-              checkResult.asistente,
-              ...currentList.filter(a => a.id !== checkResult.asistente.id)
-            ]
-          };
-        });
+      // 4. Actualización en backend
+      const apiResponse = await ScannerAPI.markAsScanned(asistenteLocal.id);
+      console.log('[Scan] Respuesta de API:', apiResponse);
 
-        await updateAsistenteStatus(checkResult.asistente.id, 'SCANNED');
-        addToBuffer({
-          ticket_id: checkResult.asistente.id,
-          event_id: eventoSeleccionado.event_id,
-          timestamp: new Date().toISOString()
-        });
-
-        validationState = {
-          status: "valid",
-          mensaje: `Entrada válida - ${checkResult.asistente.nombre || ''}`,
-          asistente: checkResult.asistente,
-          timestamp: Date.now()
-        };
-      } else if (checkResult.success) {
-        validationState = {
-          status: checkResult.status.toLowerCase(),
-          mensaje: checkResult.mensaje,
-          asistente: checkResult.asistente,
-          timestamp: Date.now()
-        };
-      } else {
-        validationState = {
-          status: "error",
-          mensaje: checkResult.mensaje || "QR inválido",
-          timestamp: Date.now()
-        };
+      if (!apiResponse.success) {
+        throw new Error(apiResponse.message || 'Error al actualizar en backend');
       }
-    }
 
-    // Mostrar resultado
-    setScanState(prev => ({
-      ...prev,
-      validation: validationState,
-      showOverlay: true
-    }));
+      // 5. Actualizar estado local
+      await updateAsistenteStatus(asistenteLocal.id, 'SCANNED');
+      addToBuffer({
+        ticket_id: asistenteLocal.id,
+        event_id: eventId,
+        timestamp: new Date().toISOString()
+      });
 
-    // Programar reinicio
-    const elapsed = performance.now() - scanStartTime;
-    const displayTime = ["error", "ya-validado"].includes(validationState.status)
-      ? Math.max(ERROR_DISPLAY_TIME - elapsed, 500)  // 500ms mínimo para errores
-      : Math.max(MIN_DISPLAY_TIME - elapsed, 300);   // 300ms mínimo para éxitos
-
-    timeoutRef.current = setTimeout(async () => {
-      if (!isMounted.current || !qrScanner.current) return;
-      
-      scanningPausedRef.current = false;
-      lastScannedRef.current = "";
-      
       setScanState(prev => ({
         ...prev,
-        scanningPaused: false,
-        showOverlay: false,
-        lastScanned: "",
-        scannerState: Html5QrcodeScannerState.SCANNING
+        validation: {
+          status: "valid",
+          mensaje: `Validado: ${asistenteLocal.nombre}`,
+          asistente: asistenteLocal
+        },
+        showOverlay: true
       }));
 
-      // Reanudación segura
-      try {
-        const scanner = qrScanner.current;
-        if (scanner && typeof scanner.resume === 'function') {
-          await scanner.resume();
-        } else {
-          await restartScanner();
-        }
-      } catch (error) {
-        console.error("Error al reanudar escáner:", error);
-        await restartScanner();
+    } else {
+      console.log('[Scan] Ticket no en caché, validando con API...');
+      
+      // 6. Validar con backend
+      const checkResult = await ScannerAPI.checkTicketStatus(eventId, ticketCode);
+      console.log('[Scan] Resultado API:', checkResult);
+
+      if (!checkResult.success) {
+        throw new Error(checkResult.message || 'Error al validar ticket');
       }
-    }, displayTime);
+
+      // Manejo de estados según respuesta del backend
+      if (checkResult.data?.status === 'invalid_event') {
+        setScanState(prev => ({
+          ...prev,
+          validation: {
+            status: "mismatch",
+            mensaje: "Ticket no pertenece a este evento",
+            asistente: null
+          },
+          showOverlay: true
+        }));
+        return;
+      }
+
+      if (!checkResult.data?.valid) {
+        throw new Error(checkResult.data?.message || 'Ticket inválido');
+      }
+
+      if (checkResult.data?.already_scanned) {
+        setScanState(prev => ({
+          ...prev,
+          validation: {
+            status: "ya-validado",
+            mensaje: `Ticket ya validado: ${checkResult.data.asistente.nombre}`,
+            asistente: checkResult.data.asistente
+          },
+          showOverlay: true
+        }));
+        return;
+      }
+
+      // 7. Actualizar backend
+      const scanResponse = await ScannerAPI.markAsScanned(checkResult.data.asistente.id);
+      if (!scanResponse.success) {
+        throw new Error(scanResponse.message || 'Error al registrar escaneo');
+      }
+
+      // 8. Actualizar estado local
+      const nuevoAsistente = {
+        ...checkResult.data.asistente,
+        status: 'SCANNED'
+      };
+
+      setAsistentes(prev => ({
+        ...prev,
+        [eventId]: [...(prev[eventId] || []), nuevoAsistente]
+      }));
+
+      addToBuffer({
+        ticket_id: nuevoAsistente.id,
+        event_id: eventId,
+        timestamp: new Date().toISOString()
+      });
+
+      setScanState(prev => ({
+        ...prev,
+        validation: {
+          status: "valid",
+          mensaje: `Validado: ${nuevoAsistente.nombre}`,
+          asistente: nuevoAsistente
+        },
+        showOverlay: true
+      }));
+    }
 
   } catch (error) {
-    console.error("Error en escaneo:", error);
-    
+    console.error('[Scan] Error crítico:', error);
     setScanState(prev => ({
       ...prev,
       validation: {
         status: "error",
-        mensaje: error.message || "Error en la validación",
-        timestamp: Date.now()
+        mensaje: error.message || "Error en validación"
+      },
+      showOverlay: true
+    }));
+  } finally {
+    // 9. Reiniciar escáner después de delay
+    setTimeout(() => {
+      if (isMounted.current) {
+        scanningPausedRef.current = false;
+        setScanState(prev => ({
+          ...prev,
+          scanningPaused: false,
+          scannerState: Html5QrcodeScannerState.SCANNING
+        }));
+        if (qrScanner.current?.getState?.() === Html5QrcodeScannerState.PAUSED) {
+          qrScanner.current.resume().catch(() => {});
+        }
+      }
+    }, 1500);
+  }
+}, [eventoSeleccionado, asistentes, updateAsistenteStatus, addToBuffer, setAsistentes]);
+
+  const resetScannerState = useCallback(() => {
+    console.log('[resetScannerState] Reseteando estado del escáner');
+    scanningPausedRef.current = false;
+    lastScannedRef.current = "";
+    setScanState(prev => ({
+      ...prev,
+      scanningPaused: false,
+      showOverlay: false,
+      lastScanned: "",
+      scannerState: Html5QrcodeScannerState.SCANNING
+    }));
+  }, []);
+
+  function handleScanError(error) {
+    console.error('[handleScanError] Error de escaneo:', error);
+    setScanState(prev => ({
+      ...prev,
+      validation: {
+        status: "error",
+        mensaje: error.message || "Error en el escaneo"
       },
       showOverlay: true
     }));
 
     timeoutRef.current = setTimeout(() => {
-      if (!isMounted.current) return;
-      resetScannerState();
-      restartScanner().catch(e => console.error("Error al reiniciar:", e));
-    }, ERROR_DISPLAY_TIME);
+      if (isMounted.current) {
+        resetScannerState();
+        restartScanner().catch(e => console.error("Error al reiniciar:", e));
+      }
+    }, 300);
   }
+
+  const handleSync = useCallback(async () => {
+    console.log('[handleSync] Iniciando sincronización manual');
+    if (!eventoSeleccionado?.event_id || !setAsistentes) {
+      console.error('[handleSync] Faltan dependencias para sincronización');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('[handleSync] Deteniendo escáner para sincronizar');
+      await stopScanner();
+      
+      console.log('[handleSync] Sincronizando asistentes con API para evento:', eventoSeleccionado.event_id);
+      const data = await ScannerAPI.syncAttendees(eventoSeleccionado.event_id);
+      console.log('[handleSync] Datos recibidos de API:', {
+        success: data.success,
+        count: data.attendees?.length || 0,
+        message: data.message
+      });
+      
+      if (data.success) {
+        const eventId = String(eventoSeleccionado.event_id); // Normalización a string
+        console.log('[handleSync] Normalizado eventId:', eventId);
+        
+        console.log('[handleSync] Estado actual de asistentes:', {
+          prevEventIds: Object.keys(asistentes),
+          currentEventData: asistentes[eventId]?.length || 0
+        });
+
+        setAsistentes(prev => {
+          const newAttendees = data.attendees || [];
+          console.log('[handleSync] Nuevos asistentes a guardar:', {
+            count: newAttendees.length,
+            sample: newAttendees.slice(0, 3)
+          });
+          
+          return {
+            ...prev,
+            [eventId]: newAttendees
+          };
+        });
+
+        showToast(`Sincronizados ${data.attendees?.length || 0} asistentes`, "success");
+      } else {
+        console.warn('[handleSync] Sincronización fallida:', data.message);
+        showToast(data.message || "Error al sincronizar", "error");
+      }
+    } catch (error) {
+      console.error('[handleSync] Error en sincronización:', {
+        error: error.message,
+        stack: error.stack
+      });
+      showToast("Error de conexión al sincronizar", "error");
+    } finally {
+      setLoading(false);
+      console.log('[handleSync] Intentando reiniciar escáner');
+      try {
+        await startScanner();
+        console.log('[handleSync] Escáner reiniciado con éxito');
+      } catch (scannerError) {
+        console.error('[handleSync] Error al reiniciar escáner:', scannerError);
+      }
+    }
 }, [
-  eventoSeleccionado,
-  asistentes,
-  extractTicketCode, 
-  normalizeUrl,
-  restartScanner,
-  safeCall,
-  updateAsistenteStatus,
-  addToBuffer,
-  resetScannerState,
-  setAsistentes
+  eventoSeleccionado, 
+  setAsistentes, 
+  setLoading, 
+  startScanner, 
+  stopScanner,
+  asistentes // Asegúrate de incluir asistentes en las dependencias
 ]);
 
-
-// Función auxiliar para resetear estado
-const resetScannerState = useCallback(() => {
-    scanningPausedRef.current = false;
-    lastScannedRef.current = "";
-    setScanState(prev => ({
-        ...prev,
-        scanningPaused: false,
-        showOverlay: false,
-        lastScanned: "",
-        scannerState: Html5QrcodeScannerState.SCANNING
-    }));
-}, []);
-
-// Función auxiliar para manejo de errores
-function handleScanError(error) {
-    setScanState(prev => ({
-        ...prev,
-        validation: {
-            status: "error",
-            mensaje: error.message || "Error en el escaneo"
-        },
-        showOverlay: true
-    }));
-
-    // Reinicio rápido en caso de error
-    timeoutRef.current = setTimeout(() => {
-        if (isMounted.current) {
-            resetScannerState();
-            restartScanner().catch(e => console.error("Error al reiniciar:", e));
-        }
-    }, 300);
-}
-  // Sincronizar asistentes manualmente
- const handleSync = useCallback(async () => {
-  if (!eventoSeleccionado?.event_id || !setAsistentes) {
-    console.error('Faltan dependencias para sincronización');
-    return;
-  }
-
-  setLoading(true);
-  try {
-    await stopScanner();
-    
-    const data = await ScannerAPI.syncAttendees(eventoSeleccionado.event_id);
-    if (data.success) {
-      setAsistentes(prev => ({
-        ...prev,
-        [eventoSeleccionado.event_id]: data.attendees || []
-      }));
-      showToast("Asistentes sincronizados", "success");
-    }
-  } catch (error) {
-    console.error("Error sincronizando:", error);
-    showToast("Error al sincronizar", "error");
-  } finally {
-    setLoading(false);
-    startScanner(); // Reiniciar después de sincronizar
-  }
-}, [eventoSeleccionado, setAsistentes, setLoading, startScanner, stopScanner]);
-
   useEffect(() => {
-    if (!eventoSeleccionado?.event_id) return;
+    console.log('[useEffect] Configurando sincronización automática');
+    if (!eventoSeleccionado?.event_id) {
+      console.log('[useEffect] No hay event_id, omitiendo sincronización');
+      return;
+    }
 
-    // Bandera para evitar sincronizaciones redundantes
     let isSyncing = false;
     let lastSyncTime = 0;
     let lastAttendeesHash = '';
 
-    // Función para calcular hash rápido de los asistentes
     const getAttendeesHash = (attendees) => {
-        return attendees?.length.toString() || '0';
+      return attendees?.length.toString() || '0';
     };
 
     const syncAutomatically = async () => {
-        // Evitar múltiples sincronizaciones simultáneas
-        if (isSyncing) return;
-        
-        // Verificar si es necesario sincronizar (mínimo 5 minutos)
-        const now = Date.now();
-        if (now - lastSyncTime < 300000 && lastSyncTime !== 0) return;
+  // 1. Validación inicial mejorada
+  if (!eventoSeleccionado?.event_id || isSyncing) {
+    console.log('[syncAutomatically] Condiciones no cumplidas para sincronizar');
+    return;
+  }
 
-        isSyncing = true;
-        
-        try {
-            const data = await ScannerAPI.syncAttendees(eventoSeleccionado.event_id);
-            if (data.success) {
-                const newHash = getAttendeesHash(data.attendees);
-                
-                // Solo actualizar estado si hubo cambios
-                if (newHash !== lastAttendeesHash) {
-                    setAsistentes(prev => ({
-                        ...prev,
-                        [eventoSeleccionado.event_id]: data.attendees || []
-                    }));
-                    lastAttendeesHash = newHash;
-                }
-            }
-        } catch (err) {
-            console.error('Error sincronizando asistentes:', err);
-        } finally {
-            isSyncing = false;
-            lastSyncTime = Date.now();
-        }
-    };
+  // 2. Control de frecuencia de sincronización
+  const now = Date.now();
+  if (now - lastSyncTime < 300000 && lastSyncTime !== 0) {
+    console.log('[syncAutomatically] Sincronización reciente, omitiendo');
+    return;
+  }
 
-    // Sincronización inteligente al montar
+  isSyncing = true;
+  const eventId = String(eventoSeleccionado.event_id); // Normalización clave
+  
+  try {
+    console.log('[syncAutomatically] Iniciando sincronización para:', eventId);
+    
+    // 3. Llamada a API con manejo de errores estructurado
+    const { success, data: rawAttendees = [], message } = await ScannerAPI.syncAttendees(eventId);
+    const attendees = Array.isArray(rawAttendees) ? rawAttendees : [];
+
+    if (!success) {
+      console.warn('[syncAutomatically] API respondió sin éxito:', message);
+      return;
+    }
+
+    console.log('[syncAutomatically] Asistentes recibidos:', attendees.length, 'Ejemplo:', attendees.slice(0, 2));
+
+    // 4. Actualización de estado con triple verificación
+    setAsistentes(prev => {
+      const prevAttendees = prev[eventId] || [];
+      const prevHash = JSON.stringify(prevAttendees);
+      const newHash = JSON.stringify(attendees);
+
+      if (prevHash !== newHash) {
+        console.log('[syncAutomatically] Actualizando estado para:', eventId, 'Con:', attendees.length, 'asistentes');
+        return {
+          ...prev,
+          [eventId]: attendees
+        };
+      }
+      
+      console.log('[syncAutomatically] No hay cambios en los datos');
+      return prev;
+    });
+
+    // 5. Actualización de metadatos
+    lastAttendeesHash = getAttendeesHash(attendees);
+    lastSyncTime = Date.now();
+
+  } catch (error) {
+    console.error('[syncAutomatically] Error crítico:', {
+      message: error.message,
+      stack: error.stack,
+      eventId
+    });
+  } finally {
+    isSyncing = false;
+    console.log('[syncAutomatically] Sincronización finalizada para:', eventId);
+  }
+};
+
     const initialSync = () => {
-        if (document.visibilityState === 'visible') {
-            syncAutomatically();
-        }
+      console.log('[initialSync] Sincronización inicial');
+      if (document.visibilityState === 'visible') {
+        syncAutomatically();
+      }
     };
 
-    // Manejo de visibilidad de la pestaña
     const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-            syncAutomatically();
-        }
+      console.log('[handleVisibilityChange] Cambio de visibilidad:', document.visibilityState);
+      if (document.visibilityState === 'visible') {
+        syncAutomatically();
+      }
     };
 
-    // Configuración de listeners
     document.addEventListener('visibilitychange', handleVisibilityChange);
     const interval = setInterval(syncAutomatically, 300000);
+    console.log('[useEffect] Intervalo de sincronización configurado cada 5 minutos');
     
-    // Sincronización inicial diferida
     const initialSyncTimer = setTimeout(initialSync, 1000);
+    console.log('[useEffect] Sincronización inicial programada en 1s');
 
     return () => {
-        clearInterval(interval);
-        clearTimeout(initialSyncTimer);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      console.log('[useEffect cleanup] Limpiando sincronización automática');
+      clearInterval(interval);
+      clearTimeout(initialSyncTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-}, [eventoSeleccionado?.event_id, setAsistentes]);
+  }, [eventoSeleccionado?.event_id, setAsistentes]);
   
-  // Controlar cámara basado en evento seleccionado
   useEffect(() => {
-    if (!eventoSeleccionado?.event_id) return;
+    console.log('[useEffect] Control de cámara por evento seleccionado');
+    if (!eventoSeleccionado?.event_id) {
+      console.log('[useEffect] No hay evento seleccionado, omitiendo');
+      return;
+    }
 
     const asistentesEvento = asistentes[eventoSeleccionado.event_id] || [];
+    console.log('[useEffect] Asistentes para el evento:', asistentesEvento.length);
 
     const handleCamera = async () => {
+      console.log('[handleCamera] Manejando estado de cámara');
       if (eventoSeleccionado.event_id !== lastEventIdRef.current) {
+        console.log('[handleCamera] Evento cambiado, reiniciando escáner');
         lastEventIdRef.current = eventoSeleccionado.event_id;
         await stopScanner();
-        if (asistentesEvento.length > 0) await startScanner();
+        if (asistentesEvento.length > 0) {
+          console.log('[handleCamera] Hay asistentes, iniciando escáner');
+          await startScanner();
+        }
         return;
       }
 
       if (asistentesEvento.length > 0 && !scanState.cameraActive && !scanState.scanningPaused) {
+        console.log('[handleCamera] Condiciones para iniciar cámara cumplidas');
         await startScanner();
       } else if ((asistentesEvento.length === 0 || scanState.scanningPaused) && scanState.cameraActive) {
+        console.log('[handleCamera] Condiciones para detener cámara cumplidas');
         await stopScanner();
       }
     };
@@ -698,26 +776,31 @@ function handleScanError(error) {
     handleCamera();
   }, [eventoSeleccionado?.event_id, asistentes, scanState.cameraActive, scanState.scanningPaused, startScanner, stopScanner]);
 
-  // Pausa/continúa por visibilidad de pestaña (no rompe overlay)
   useEffect(() => {
+    console.log('[useEffect] Configurando listener de visibilidad');
     const onVis = async () => {
-      if (!qrScanner.current) return;
+      console.log('[onVis] Cambio de visibilidad:', document.hidden ? 'oculto' : 'visible');
+      if (!qrScanner.current) {
+        console.log('[onVis] No hay escáner activo, omitiendo');
+        return;
+      }
+      
       if (document.hidden) {
-        // Pausar solo si estaba escaneando
+        console.log('[onVis] Pestaña oculta, pausando escáner si está activo');
         if (qrScanner.current.getState() === Html5QrcodeScannerState.SCANNING) {
           await safeCall(() => qrScanner.current.pause(), "visibilityPause");
           if (isMounted.current) {
+            console.log('[onVis] Actualizando estado a PAUSED');
             setScanState(prev => ({ ...prev, scannerState: Html5QrcodeScannerState.PAUSED }));
           }
         }
       } else {
-        // Reanudar solo si no está en pausa lógica por overlay
-        if (
-          !scanningPausedRef.current &&
-          qrScanner.current.getState() === Html5QrcodeScannerState.PAUSED
-        ) {
+        console.log('[onVis] Pestaña visible, reanudando escáner si corresponde');
+        if (!scanningPausedRef.current &&
+            qrScanner.current.getState() === Html5QrcodeScannerState.PAUSED) {
           await safeCall(() => qrScanner.current.resume(), "visibilityResume");
           if (isMounted.current) {
+            console.log('[onVis] Actualizando estado a SCANNING');
             setScanState(prev => ({ ...prev, scannerState: Html5QrcodeScannerState.SCANNING }));
           }
         }
@@ -725,32 +808,49 @@ function handleScanError(error) {
     };
 
     document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
+    return () => {
+      console.log('[useEffect cleanup] Removiendo listener de visibilidad');
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [safeCall]);
 
-  // Limpieza al desmontar
   useEffect(() => {
-    isMounted.current = true;
-    return () => {
-      isMounted.current = false;
-      // Cancelar timers
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
-      // Detener cámara de forma segura
-      // No usar runSerial aquí para no bloquear el unmount
-      safeStopScanner();
-    };
-  }, [safeStopScanner]);
-  // Actualizar referencia de validación
+  console.log('[useEffect] Configurando limpieza al desmontar');
+  isMounted.current = true;
+  
+  return () => {
+    console.log('[useEffect cleanup] Desmontando componente');
+    
+    // 1. Marcar componente como desmontado
+    isMounted.current = false;
+    
+    // 2. Limpiar todos los timeouts (forma compacta)
+    [timeoutRef.current, retryTimeoutRef.current].forEach(timer => {
+      if (timer) clearTimeout(timer);
+    });
+    
+    // 3. Detener el escáner usando safeStopScanner (¡ya hace todo lo necesario!)
+    console.log('[useEffect cleanup] Deteniendo escáner con safeStopScanner');
+    safeStopScanner().catch(error => {
+      console.error('[cleanup] Error al detener escáner:', error);
+    });
+  };
+}, [safeStopScanner]); // <-- Mantenemos esta dependencia
+
   useEffect(() => {
+    console.log('[useEffect] Actualizando validationRef');
     validationRef.current = scanState.validation;
   }, [scanState.validation]);
-  
-  // Renderizar overlay de validación
+
   const renderValidationOverlay = useCallback(() => {
-    if (!scanState.showOverlay || !scanState.validation) return null;
+    if (!scanState.showOverlay || !scanState.validation) {
+      console.log('[renderValidationOverlay] Sin overlay para mostrar');
+      return null;
+    }
 
     const { status, mensaje } = scanState.validation;
+    console.log('[renderValidationOverlay] Mostrando overlay:', status, mensaje);
+    
     const validationConfig = {
       valid: { icon: checkImg, title: "TICKET VÁLIDO", color: "#4CAF50" },
       error: { icon: crossImg, title: "ERROR", color: "#f44336" },
@@ -761,6 +861,7 @@ function handleScanError(error) {
     };
 
     const config = validationConfig[status] || validationConfig.error;
+    console.log('[renderValidationOverlay] Configuración de overlay:', config);
 
     return (
       <div className="fullscreen-overlay">
@@ -773,6 +874,7 @@ function handleScanError(error) {
     );
   }, [scanState.showOverlay, scanState.validation]);
 
+  console.log('[ScanQR] Renderizando componente');
   return (
     <div className="scanner-container">
       <header className="header">
@@ -785,8 +887,12 @@ function handleScanError(error) {
           value={eventoSeleccionado?.event_id || ""}
           onChange={e => {
             const selectedId = e.target.value;
+            console.log('[onChange] Evento seleccionado:', selectedId);
             const selectedEvent = eventos.find(ev => ev.event_id.toString() === selectedId);
-            if (selectedEvent) selectEvento(selectedEvent);
+            if (selectedEvent) {
+              console.log('[onChange] Actualizando evento seleccionado:', selectedEvent);
+              selectEvento(selectedEvent);
+            }
           }}
         >
           <option value="" disabled>Seleccione un evento</option>
