@@ -557,13 +557,27 @@ const extractTicketCode = useCallback((qrText) => {
   showToast
 ]);
 
-// 🔹 Efecto para sincronizar carga de asistentes
+// 🔹 Efecto para sincronizar carga de asistentes // 1
   useEffect(() => {
     if (eventoSeleccionado?.event_id) {
       const asistentesEvento = asistentes[eventoSeleccionado.event_id];
       setAsistentesCargados(!!asistentesEvento?.length);
     }
   }, [eventoSeleccionado, asistentes]);
+// 2
+  useEffect(() => {
+  if (eventoSeleccionado && asistentesCargados) {
+    setScanState(prev => ({ ...prev, cameraActive: true }));
+
+    startScanner();
+  } else {
+    setScanState(prev => ({ ...prev, cameraActive: false }));
+
+    stopScanner();
+  }
+}, [eventoSeleccionado, asistentesCargados]);
+
+//3
 useEffect(() => {
     const handleCamera = async () => {
       if (asistentesCargados) {
@@ -574,6 +588,7 @@ useEffect(() => {
     };
     handleCamera();
   }, [asistentesCargados, startScanner, stopScanner]);
+  //4
   useEffect(() => {
     console.log('[useEffect] Configurando sincronización automática');
     if (!eventoSeleccionado?.event_id) {
@@ -685,7 +700,7 @@ useEffect(() => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [eventoSeleccionado?.event_id, setAsistentes]);
-  
+  //5
   useEffect(() => {
     console.log('[useEffect] Control de cámara por evento seleccionado');
     if (!eventoSeleccionado?.event_id) {
@@ -720,7 +735,7 @@ useEffect(() => {
 
     handleCamera();
   }, [eventoSeleccionado?.event_id, asistentes, scanState.cameraActive, scanState.scanningPaused, startScanner, stopScanner]);
-
+//6
   useEffect(() => {
     console.log('[useEffect] Configurando listener de visibilidad');
     const onVis = async () => {
@@ -758,7 +773,7 @@ useEffect(() => {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [safeCall]);
-
+//7
   useEffect(() => {
   console.log('[useEffect] Configurando limpieza al desmontar');
   isMounted.current = true;
@@ -781,11 +796,28 @@ useEffect(() => {
     });
   };
 }, [safeStopScanner]); // <-- Mantenemos esta dependencia
-
+//8
   useEffect(() => {
     console.log('[useEffect] Actualizando validationRef');
     validationRef.current = scanState.validation;
   }, [scanState.validation]);
+  //9
+useEffect(() => {
+  if (!eventoSeleccionado) return;
+
+  const asistentesEvento = asistentes[eventoSeleccionado.event_id];
+  console.log('[ScanQR] asistentesEvento:', asistentesEvento);
+
+  if (asistentesEvento?.length > 0) {
+    setScanState(prev => ({ ...prev, cameraActive: true }));
+
+    startScanner();
+  } else {
+    setScanState(prev => ({ ...prev, cameraActive: false }));
+
+    stopScanner();
+  }
+}, [eventoSeleccionado, asistentes]);
 
   const renderValidationOverlay = useCallback(() => {
     if (!scanState.showOverlay || !scanState.validation) {

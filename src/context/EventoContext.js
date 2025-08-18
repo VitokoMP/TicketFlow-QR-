@@ -17,7 +17,7 @@ export const EventoProvider = ({ children }) => {
   const [asistentes, setAsistentes] = useState({});
   const [loading, setLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-
+  const [asistentesCargados, setAsistentesCargados] = useState(false);
   // Refs para estado persistente
   const isMounted = useRef(true);
   const syncBufferRef = useRef([]);
@@ -29,7 +29,6 @@ export const EventoProvider = ({ children }) => {
     // Cargar estado persistente
     const savedAsistentes = localStorage.getItem('ticketflow_asistentes');
     const savedBuffer = localStorage.getItem('ticketflow_pending_scans');
-    
     if (savedAsistentes) setAsistentes(JSON.parse(savedAsistentes));
     if (savedBuffer) syncBufferRef.current = JSON.parse(savedBuffer);
 
@@ -63,17 +62,26 @@ export const EventoProvider = ({ children }) => {
 
   // 🔹 Cargar eventos activos al montar el provider
   useEffect(() => {
-    const loadInitialData = async () => {
+  const loadInitialData = async () => {
+    try {
+      setLoading(true);
       const { success, data: events } = await ScannerAPI.getActiveEvents();
       if (success && events.length > 0) {
         setEventos(events);
         const firstEvent = events[0];
         setEventoSeleccionado(firstEvent);
-        await loadAsistentes(firstEvent.event_id); // Esperar carga
+        const loaded = await loadAsistentes(firstEvent.event_id);
+        setAsistentesCargados(loaded); // ahora sí se actualiza
       }
-    };
-    loadInitialData();
-  }, [loadAsistentes]);
+    } catch (error) {
+      console.error('[Eventos] Error cargando eventos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  loadInitialData();
+}, [loadAsistentes]);
 
   // Función para actualizar estado de asistente
   const updateAsistenteStatus = useCallback((asistenteId, newStatus, fullData = null) => {
@@ -155,6 +163,7 @@ export const EventoProvider = ({ children }) => {
       syncTimerRef.current = null;
     }
   }, [eventoSeleccionado, isOnline]);
+
   //funcion para llamar a la api y cargar los asistentes de un evento
     const loadAsistentes = useCallback(async (eventId) => {
     try {
@@ -272,6 +281,8 @@ export const EventoProvider = ({ children }) => {
         asistentes,
         loading,
         eventoSeleccionado,
+        asistentesCargados,
+        loadAsistentes,
         validarTicket,
         updateAsistenteStatus,
         addToBuffer,
