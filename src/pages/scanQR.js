@@ -27,6 +27,8 @@ export default function ScanQR() {
     selectEvento,
     updateAsistenteStatus,
     addToBuffer,
+    setEventoSeleccionado,
+    loadAsistentes
   } = useEvento();
 
   console.log('[ScanQR] Contexto cargado', {
@@ -61,6 +63,8 @@ export default function ScanQR() {
     
   const lastScanTimeRef = useRef(0);      // controla tiempo entre escaneos
   const lastProcessedTicketRef = useRef(); // controla ticket duplicado
+
+  const [asistentesCargados, setAsistentesCargados] = useState(false);//estado para controlar si los asistentes estan cargados
 
   const runSerial = useCallback(async (fn, label = "op") => {
     console.log(`[runSerial] Iniciando operación serializada: ${label}`);
@@ -392,7 +396,7 @@ const extractTicketCode = useCallback((qrText) => {
   const normalizedTicket = normalizeTicket(ticketCode);
 
   if (!normalizedTicket) {
-    showFeedback('error', 'Ticket inválido');
+    showToast('error', 'Ticket inválido');
     return;
   }
 
@@ -416,11 +420,11 @@ const extractTicketCode = useCallback((qrText) => {
     const result = await validarTicket(eventoSeleccionado.event_id, normalizedTicket);
 
     // Mostrar overlay según resultado
-    showFeedback(result.type, result.message, result.asistente);
+    showToast(result.type, result.message, result.asistente);
 
   } catch (error) {
     console.error('[Scan] Error crítico:', error);
-    showFeedback('error', error.message || 'Error inesperado');
+    showToast('error', error.message || 'Error inesperado');
   } finally {
     // 🔹 Reanudar escáner de forma segura
     setTimeout(() => {
@@ -475,79 +479,101 @@ const extractTicketCode = useCallback((qrText) => {
       }
     }, 300);
   }
-
+///////////////////////Mover al Contexto!
   const handleSync = useCallback(async () => {
-    console.log('[handleSync] Iniciando sincronización manual');
-    if (!eventoSeleccionado?.event_id || !setAsistentes) {
-      console.error('[handleSync] Faltan dependencias para sincronización');
-      return;
-    }
+  console.log('[handleSync] Iniciando sincronización manual');
+  
+  // Validación más completa
+  if (!eventoSeleccionado?.event_id) {
+    const errorMsg = 'No hay evento seleccionado para sincronizar';
+    console.error('[handleSync]', errorMsg);
+    showToast(errorMsg, 'error');
+    return;
+  }
 
-    setLoading(true);
+  const eventId = String(eventoSeleccionado.event_id); // Normalización temprana
+  setLoading(true);
+  
+  try {
+    console.log('[handleSync] Deteniendo escáner para sincronizar');
+    await stopScanner();
+    
+    console.log('[handleSync] Sincronizando asistentes para evento:', eventId);
+    const { success, attendees = [], message = '' } = await ScannerAPI.syncAttendees(eventId);
+    
+    console.log('[handleSync] Respuesta API:', { 
+      success, 
+      count: attendees.length,
+      message 
+    });
+    
+    if (success) {
+      console.log('[handleSync] Actualizando estado local para evento', eventId);
+      
+      setAsistentes(prev => {
+        const prevState = prev || {}; // Manejo seguro de estado inicial
+        return {
+          ...prevState,
+          [eventId]: attendees.map(a => ({ 
+            ...a,
+            status: a.status || 'PENDING' // Normalización
+          }))
+        };
+      });
+
+      showToast(`Sincronizados ${attendees.length} asistentes`, "success");
+    } else {
+      console.warn('[handleSync] Sincronización fallida:', message);
+      showToast(message || "Error al sincronizar", "error");
+    }
+  } catch (error) {
+    console.error('[handleSync] Error en sincronización:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    showToast("Error de conexión al sincronizar", "error");
+  } finally {
+    setLoading(false);
+    
+    console.log('[handleSync] Reanudando escáner...');
     try {
-      console.log('[handleSync] Deteniendo escáner para sincronizar');
-      await stopScanner();
-      
-      console.log('[handleSync] Sincronizando asistentes con API para evento:', eventoSeleccionado.event_id);
-      const data = await ScannerAPI.syncAttendees(eventoSeleccionado.event_id);
-      console.log('[handleSync] Datos recibidos de API:', {
-        success: data.success,
-        count: data.attendees?.length || 0,
-        message: data.message
+      await startScanner();
+      console.log('[handleSync] Escáner reiniciado con éxito');
+    } catch (scannerError) {
+      console.error('[handleSync] Error al reiniciar escáner:', {
+        name: scannerError.name,
+        message: scannerError.message
       });
-      
-      if (data.success) {
-        const eventId = String(eventoSeleccionado.event_id); // Normalización a string
-        console.log('[handleSync] Normalizado eventId:', eventId);
-        
-        console.log('[handleSync] Estado actual de asistentes:', {
-          prevEventIds: Object.keys(asistentes),
-          currentEventData: asistentes[eventId]?.length || 0
-        });
-
-        setAsistentes(prev => {
-          const newAttendees = data.attendees || [];
-          console.log('[handleSync] Nuevos asistentes a guardar:', {
-            count: newAttendees.length,
-            sample: newAttendees.slice(0, 3)
-          });
-          
-          return {
-            ...prev,
-            [eventId]: newAttendees
-          };
-        });
-
-        showToast(`Sincronizados ${data.attendees?.length || 0} asistentes`, "success");
-      } else {
-        console.warn('[handleSync] Sincronización fallida:', data.message);
-        showToast(data.message || "Error al sincronizar", "error");
-      }
-    } catch (error) {
-      console.error('[handleSync] Error en sincronización:', {
-        error: error.message,
-        stack: error.stack
-      });
-      showToast("Error de conexión al sincronizar", "error");
-    } finally {
-      setLoading(false);
-      console.log('[handleSync] Intentando reiniciar escáner');
-      try {
-        await startScanner();
-        console.log('[handleSync] Escáner reiniciado con éxito');
-      } catch (scannerError) {
-        console.error('[handleSync] Error al reiniciar escáner:', scannerError);
-      }
+      // Opcional: Mostrar toast específico para error de cámara
     }
+  }
 }, [
-  eventoSeleccionado, 
-  setAsistentes, 
-  setLoading, 
+  eventoSeleccionado,
   startScanner, 
   stopScanner,
-  asistentes // Asegúrate de incluir asistentes en las dependencias
+  setLoading,
+  setAsistentes,
+  showToast
 ]);
 
+// 🔹 Efecto para sincronizar carga de asistentes
+  useEffect(() => {
+    if (eventoSeleccionado?.event_id) {
+      const asistentesEvento = asistentes[eventoSeleccionado.event_id];
+      setAsistentesCargados(!!asistentesEvento?.length);
+    }
+  }, [eventoSeleccionado, asistentes]);
+useEffect(() => {
+    const handleCamera = async () => {
+      if (asistentesCargados) {
+        await startScanner();
+      } else {
+        await stopScanner();
+      }
+    };
+    handleCamera();
+  }, [asistentesCargados, startScanner, stopScanner]);
   useEffect(() => {
     console.log('[useEffect] Configurando sincronización automática');
     if (!eventoSeleccionado?.event_id) {
@@ -792,6 +818,14 @@ const extractTicketCode = useCallback((qrText) => {
       </div>
     );
   }, [scanState.showOverlay, scanState.validation]);
+  //conestatehacesfamoso
+  const handleEventoChange = async (evento) => {
+  setEventoSeleccionado(evento);
+
+  // Cargar asistentes para este evento
+  await loadAsistentes(evento.event_id);
+  };
+
 
   console.log('[ScanQR] Renderizando componente');
   return (
@@ -810,7 +844,7 @@ const extractTicketCode = useCallback((qrText) => {
             const selectedEvent = eventos.find(ev => ev.event_id.toString() === selectedId);
             if (selectedEvent) {
               console.log('[onChange] Actualizando evento seleccionado:', selectedEvent);
-              selectEvento(selectedEvent);
+              setEventoSeleccionado(selectedEvent);
             }
           }}
         >

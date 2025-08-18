@@ -59,6 +59,22 @@ export const EventoProvider = ({ children }) => {
     localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
   }, [syncBufferRef.current.length]);
 
+  // Justo después de tus otros useEffect, dentro del EventoProvider:
+
+  // 🔹 Cargar eventos activos al montar el provider
+  useEffect(() => {
+    const loadInitialData = async () => {
+      const { success, data: events } = await ScannerAPI.getActiveEvents();
+      if (success && events.length > 0) {
+        setEventos(events);
+        const firstEvent = events[0];
+        setEventoSeleccionado(firstEvent);
+        await loadAsistentes(firstEvent.event_id); // Esperar carga
+      }
+    };
+    loadInitialData();
+  }, [loadAsistentes]);
+
   // Función para actualizar estado de asistente
   const updateAsistenteStatus = useCallback((asistenteId, newStatus, fullData = null) => {
     if (!eventoSeleccionado) return false;
@@ -139,18 +155,42 @@ export const EventoProvider = ({ children }) => {
       syncTimerRef.current = null;
     }
   }, [eventoSeleccionado, isOnline]);
+  //funcion para llamar a la api y cargar los asistentes de un evento
+    const loadAsistentes = useCallback(async (eventId) => {
+    try {
+      setLoading(true);
+      const result = await ScannerAPI.getAttendees(eventId);
+      if (result.success) {
+        setAsistentes(prev => ({ 
+          ...prev, 
+          [eventId]: result.data 
+        }));
+        return true; // Indica éxito
+      }
+      toast.error(result.message || "Error cargando asistentes");
+      return false;
+    } catch (error) {
+      console.error('[Asistentes] Error:', error);
+      toast.error("Error de conexión al cargar asistentes");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // Función centralizada de validación
   const validarTicket = useCallback(async (eventId, ticketCode) => {
     try {
       const asistentesEvento = asistentes[eventId] || [];
-      
+      console.log('[Validación] Asistentes para este evento:', asistentesEvento);
+
       // 1. Buscar localmente
       const asistenteLocal = asistentesEvento.find(a => 
         a.ticket_code === ticketCode || a.id === ticketCode
       );
 
       if (asistenteLocal) {
+      console.log('[Validación] Ticket encontrado localmente:', asistenteLocal); // <-- log aquí
         if (asistenteLocal.status === 'SCANNED') {
           return { 
             success: false, 
@@ -179,6 +219,9 @@ export const EventoProvider = ({ children }) => {
       // 2. Validar con backend si no está localmente
       const checkResult = await ScannerAPI.checkTicketStatus(eventId, ticketCode);
       
+      if (checkResult.success && checkResult.data?.asistente) {
+        console.log('[Validación] Ticket encontrado en backend:', checkResult.data.asistente); // <-- log aquí
+      }
       if (!checkResult.success) {
         return { 
           success: false, 
@@ -235,7 +278,8 @@ export const EventoProvider = ({ children }) => {
         syncBuffer,
         setEventos,
         setEventoSeleccionado,
-        setLoading
+        setLoading,
+        setAsistentes
       }}
     >
       {children}
