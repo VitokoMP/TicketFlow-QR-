@@ -183,7 +183,8 @@ export const EventoProvider = ({ children }) => {
     if (result.success) {
       const asistentesNormalizados = result.data.map(a => ({
         ...a,
-        id: String(a.id) // Normaliza IDs
+        id: String(a.id), // Normaliza IDs
+        status: a.status || 'PENDING', // Asegura que siempre haya un status
       }));
       
       setAsistentes(prev => ({
