@@ -11,29 +11,34 @@ export function useEvento() {
 }
 
 export const EventoProvider = ({ children }) => {
-  // Estados principales
+  // [Tus estados y refs existentes...]
   const [eventos, setEventos] = useState([]);
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null);
   const [asistentes, setAsistentes] = useState({});
   const [loading, setLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [asistentesCargados, setAsistentesCargados] = useState(false);
-  
-  // Refs para estado persistente
   const isMounted = useRef(true);
   const syncBufferRef = useRef([]);
   const syncTimerRef = useRef(null);
   const retryCountRef = useRef(0);
 
+  // 🔍 DEBUG: Log de cambios en asistentes
+  useEffect(() => {
+    console.log('🔍 [DEBUG] Estado global asistentes actualizado:', asistentes);
+  }, [asistentes]);
+
+  // 🔍 DEBUG: Log de cambios en eventoSeleccionado
+  useEffect(() => {
+    console.log('🔍 [DEBUG] eventoSeleccionado actualizado:', eventoSeleccionado);
+  }, [eventoSeleccionado]);
+
   // Efectos de montaje/desmontaje
   useEffect(() => {
-    // Limpiar cache obsoleto al iniciar
     localStorage.removeItem('ticketflow_asistentes');
-    
     const savedBuffer = localStorage.getItem('ticketflow_pending_scans');
     if (savedBuffer) syncBufferRef.current = JSON.parse(savedBuffer);
 
-    // Detectar cambios de conexión
     const handleOnline = () => {
       setIsOnline(true);
       if (syncBufferRef.current.length > 0) syncBuffer();
@@ -66,37 +71,31 @@ export const EventoProvider = ({ children }) => {
     const normalizedId = String(asistenteId);
     const eventId = eventoSeleccionado.event_id;
 
+    console.log(`🔍 [DEBUG] Actualizando estado asistente ${normalizedId} a ${newStatus}`);
+
     setAsistentes(prev => {
       const current = prev[eventId] || [];
       const idx = current.findIndex(a => String(a.id) === normalizedId);
       
-      if (idx === -1 && !fullData) return prev;
-
       const updated = [...current];
       if (idx !== -1) {
         updated[idx] = { ...updated[idx], status: newStatus, ...(fullData || {}) };
-      } else {
+      } else if (fullData) {
         updated.push({ ...fullData, status: newStatus, id: normalizedId });
       }
 
       return { ...prev, [eventId]: updated };
     });
 
-    // Actualización sincronizada de eventoSeleccionado
     setEventoSeleccionado(prev => {
       if (!prev) return prev;
-      
       const currentAsistentes = prev.asistentes || [];
       const idx = currentAsistentes.findIndex(a => String(a.id) === normalizedId);
 
       let updatedAsistentes;
       if (idx !== -1) {
         updatedAsistentes = [...currentAsistentes];
-        updatedAsistentes[idx] = { 
-          ...updatedAsistentes[idx], 
-          status: newStatus, 
-          ...(fullData || {}) 
-        };
+        updatedAsistentes[idx] = { ...updatedAsistentes[idx], status: newStatus, ...(fullData || {}) };
       } else if (fullData) {
         updatedAsistentes = [...currentAsistentes, { ...fullData, status: newStatus }];
       } else {
@@ -109,30 +108,42 @@ export const EventoProvider = ({ children }) => {
     return true;
   }, [eventoSeleccionado]);
 
-  // Función para cargar asistentes de un evento
+  // Cargar asistentes desde backend - VERSIÓN MEJORADA
   const loadAsistentes = useCallback(async (eventId) => {
     const normalizedEventId = String(eventId);
     try {
+      console.log(`🔍 [DEBUG] Cargando asistentes para evento: ${normalizedEventId}`);
       const result = await ScannerAPI.syncAttendees(normalizedEventId);
+      
       if (result.success) {
         const asistentesNormalizados = result.data.map(a => ({
           ...a,
           id: String(a.id),
           status: a.status === 'scanned' ? 'SCANNED' : 'PENDING'
         }));
+
+        console.log(`🔍 [DEBUG] Asistentes cargados desde API:`, asistentesNormalizados);
         
-        // Actualizar ambos estados consistentemente
-        setAsistentes(prev => ({
-          ...prev,
-          [normalizedEventId]: asistentesNormalizados
-        }));
-        
-        // Si este evento está seleccionado, actualizar también eventoSeleccionado
-        if (eventoSeleccionado && eventoSeleccionado.event_id === normalizedEventId) {
-          setEventoSeleccionado(prev => ({
+        // ⚡ ACTUALIZACIÓN SÍNCRONA - Primero el estado global
+        setAsistentes(prev => {
+          const newState = {
             ...prev,
-            asistentes: asistentesNormalizados
-          }));
+            [normalizedEventId]: asistentesNormalizados
+          };
+          console.log('🔍 [DEBUG] Estado global asistentes actualizado:', newState);
+          return newState;
+        });
+
+        // ⚡ LUEGO actualizar eventoSeleccionado si corresponde
+        if (eventoSeleccionado && eventoSeleccionado.event_id === normalizedEventId) {
+          setEventoSeleccionado(prev => {
+            const newEventState = {
+              ...prev,
+              asistentes: asistentesNormalizados
+            };
+            console.log('🔍 [DEBUG] eventoSeleccionado actualizado:', newEventState);
+            return newEventState;
+          });
         }
         
         return asistentesNormalizados;
@@ -144,13 +155,14 @@ export const EventoProvider = ({ children }) => {
     }
   }, [eventoSeleccionado]);
 
-  // Cargar eventos activos al montar el provider
+  // 🔄 Cargar eventos al inicio - VERSIÓN CORREGIDA
   useEffect(() => {
     let isActive = true;
 
     const loadInitialData = async () => {
       try {
         setLoading(true);
+        console.log('🔍 [DEBUG] Iniciando carga inicial de datos...');
 
         const { success, data: events } = await ScannerAPI.getActiveEvents();
         if (!isActive) return;
@@ -158,7 +170,6 @@ export const EventoProvider = ({ children }) => {
         if (success && events.length > 0) {
           setEventos(events);
 
-          // Selecciona el evento que esté activo hoy
           const today = new Date();
           const todayEvent = events.find(e => {
             const start = new Date(e.event_start_date);
@@ -167,30 +178,35 @@ export const EventoProvider = ({ children }) => {
           });
 
           if (todayEvent) {
+            console.log(`🔍 [DEBUG] Evento encontrado para hoy:`, todayEvent);
+            
+            // ⚡ ESPERAR explícitamente a que loadAsistentes termine
             const loadedAsistentes = await loadAsistentes(todayEvent.event_id);
-
-            if (isActive) {
+            
+            if (isActive && loadedAsistentes) {
+              console.log('🔍 [DEBUG] Configurando estado final...');
+              
+              // ✅ Ahora sí, ambos estados están sincronizados
               setEventoSeleccionado({
                 ...todayEvent,
-                asistentes: loadedAsistentes || []
+                asistentes: loadedAsistentes
               });
+              
               setAsistentesCargados(true);
+              console.log('🔍 [DEBUG] Carga inicial completada exitosamente');
             }
           } else {
-            // No hay evento hoy: bloquear escaneo
             if (isActive) {
               setEventoSeleccionado(null);
               setAsistentesCargados(false);
               toast.info('No hay eventos activos para hoy. El escáner está deshabilitado.');
             }
           }
-
         } else {
           toast.info('No hay eventos activos en la plataforma.');
           setEventoSeleccionado(null);
           setAsistentesCargados(false);
         }
-
       } catch (error) {
         if (isActive) {
           console.error('[Eventos] Error:', error);
@@ -202,20 +218,13 @@ export const EventoProvider = ({ children }) => {
     };
 
     loadInitialData();
-
-    return () => {
-      isActive = false;
-    };
+    return () => { isActive = false; };
   }, [loadAsistentes]);
 
+  // [Tus funciones addToBuffer, syncBuffer, validarTicket existentes...]
   const addToBuffer = useCallback((scanData) => {
-    // Agrega el scan al buffer
     syncBufferRef.current.push(scanData);
-
-    // Persistir en localStorage
     localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
-
-    // Intentar sincronizar automáticamente si estamos online
     if (isOnline) syncBuffer();
   }, [isOnline]);
 
@@ -224,15 +233,13 @@ export const EventoProvider = ({ children }) => {
 
     try {
       const bufferCopy = [...syncBufferRef.current];
-      
-      // Extraer solo los IDs de los tickets y eliminar duplicados
       const ticketIds = [...new Set(bufferCopy.map(item => item.ticket_id))];
+
       console.log(`[SyncBuffer] ${ticketIds.length} escaneos únicos a sincronizar:`, ticketIds);
 
       const response = await ScannerAPI.markMultipleAsScanned(ticketIds);
 
       if (response.success) {
-        // Limpiar buffer si fue exitoso
         syncBufferRef.current = [];
         localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
         console.log(`[SyncBuffer] ${ticketIds.length} escaneos sincronizados`);
@@ -244,13 +251,14 @@ export const EventoProvider = ({ children }) => {
     }
   }, [isOnline]);
 
-  // Función centralizada de validación
   const validarTicket = useCallback(async (eventId, ticketCode) => {
     try {
       const normalizedEventId = String(eventId);
       const normalizedTicketCode = String(ticketCode).toLowerCase().trim();
 
-      // 1. Buscar en ambos lugares: eventoSeleccionado Y asistentes global
+      console.log(`🔍 [DEBUG] Validando ticket: ${normalizedTicketCode} para evento: ${normalizedEventId}`);
+
+      // 1. Buscar en ambos estados
       const asistenteFromSelected = eventoSeleccionado?.asistentes?.find(a => 
         String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
         String(a.id).toLowerCase() === normalizedTicketCode
@@ -261,34 +269,35 @@ export const EventoProvider = ({ children }) => {
         String(a.id).toLowerCase() === normalizedTicketCode
       );
 
-      // Preferir el asistente que tenga el estado más actualizado
       const asistente = asistenteFromSelected || asistenteFromGlobal;
 
       if (asistente) {
+        console.log(`🔍 [DEBUG] Asistente encontrado:`, asistente);
+        
         if (asistente.status === 'SCANNED') {
+          console.log(`🔍 [DEBUG] Ticket ya validado anteriormente`);
           return { 
             success: false, 
             type: 'ya-validado', 
             message: `Ticket ya validado: ${asistente.nombre}`,
-            asistente: asistente
+            asistente 
           };
         }
 
-        // Actualiza ambos estados (global y eventoSeleccionado)
+        console.log(`🔍 [DEBUG] Marcando como SCANNED...`);
         updateAsistenteStatus(asistente.id, 'SCANNED');
-        
-        addToBuffer({
-          ticket_id: String(asistente.id),
-          event_id: normalizedEventId,
-          status: 'SCANNED',
-          source: 'local'
+        addToBuffer({ 
+          ticket_id: String(asistente.id), 
+          event_id: normalizedEventId, 
+          status: 'SCANNED', 
+          source: 'local' 
         });
 
         return { 
           success: true, 
           type: 'valid', 
           message: `Validado: ${asistente.nombre}`,
-          asistente: asistente
+          asistente 
         };
       }
 
@@ -307,7 +316,6 @@ export const EventoProvider = ({ children }) => {
           };
         }
 
-        // Normalizamos los datos del asistente
         const normalizedAsistente = {
           ...asistente,
           id: String(asistente.id),
@@ -315,9 +323,7 @@ export const EventoProvider = ({ children }) => {
           status: 'SCANNED'
         };
 
-        // Actualiza ambos estados
         updateAsistenteStatus(asistente.id, 'SCANNED', normalizedAsistente);
-        
         addToBuffer({
           ticket_id: String(asistente.id),
           event_id: normalizedEventId,
@@ -330,7 +336,7 @@ export const EventoProvider = ({ children }) => {
           success: true, 
           type: 'valid', 
           message: `Validado: ${asistente.nombre}`,
-          asistente: normalizedAsistente
+          asistente: normalizedAsistente 
         };
       }
 
