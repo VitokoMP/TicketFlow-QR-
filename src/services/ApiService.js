@@ -80,7 +80,7 @@ export const ScannerAPI = {
           id: item.id || '',
           ticket_code: item.ticket_code || item.qr_code || '',
           nombre: item.nombre || item.name || 'Invitado',
-          status: item.scan_satus === 'scanned' ? 'SCANNED' : 'PENDING' // Asegurar mayúsculas
+          status: item.scan_status === 'scanned' ? 'SCANNED' : 'PENDING' // Asegurar mayúsculas
         }))
       : [];
 
