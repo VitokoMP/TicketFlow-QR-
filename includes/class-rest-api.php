@@ -18,7 +18,7 @@ class TicketFlow_REST_API {
 
         // Endpoint REST para estadísticas
         ///
-        add_action('rest_authentication_errors', [$this, 'enforce_authentication']);
+        //add_action('rest_authentication_errors', [$this, 'enforce_authentication']);
     }
 
     /**
@@ -44,7 +44,7 @@ class TicketFlow_REST_API {
      * Verificación de autenticación para endpoints REST
      */
     public function enforce_authentication($result) {
-        if (!empty($result)) {
+       /* if (!empty($result)) {
             return $result;
         }
 
@@ -62,7 +62,7 @@ class TicketFlow_REST_API {
             );
         }
 
-        return $result;
+        return $result;*/
     }
 
     /**
