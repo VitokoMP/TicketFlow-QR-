@@ -217,9 +217,9 @@ const syncBuffer = useCallback(async () => {
   try {
     const bufferCopy = [...syncBufferRef.current];
     
-    // Extraer solo los IDs de los tickets
-    const ticketIds = bufferCopy.map(item => item.ticket_id);
-    console.log(`[SyncBuffer] ${ticketIds.length} escaneos a sincronizar:`, ticketIds);
+    // Extraer solo los IDs de los tickets y eliminar duplicados
+    const ticketIds = [...new Set(bufferCopy.map(item => item.ticket_id))];
+    console.log(`[SyncBuffer] ${ticketIds.length} escaneos únicos a sincronizar:`, ticketIds);
 
     const response = await ScannerAPI.markMultipleAsScanned(ticketIds);
 
@@ -235,6 +235,7 @@ const syncBuffer = useCallback(async () => {
     console.error('[SyncBuffer] Error sincronizando buffer', error);
   }
 }, [isOnline]);
+
 
   // Función centralizada de validación
   const validarTicket = useCallback(async (eventId, ticketCode) => {

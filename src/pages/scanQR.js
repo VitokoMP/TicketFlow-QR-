@@ -589,7 +589,7 @@ const renderValidationOverlay = useCallback(() => {
                 <h2 style={{ color: config.color }}>{config.title}</h2>
                 <p>{mensaje}</p>
                 {scanState.pendingTickets?.length > 0 && (
-                    <p>Tickets en memoria: {scanState.pendingTickets.join(', ')}</p>
+                    <p>Tickets validados: {scanState.pendingTickets.length}</p>
                 )}
             </div>
         </div>
