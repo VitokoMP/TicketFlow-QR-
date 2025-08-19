@@ -528,7 +528,7 @@ const handleSync = useCallback(async () => {
                     ...prevState,
                     [eventId]: attendees.map(a => ({
                         ...a,
-                        status: a.status || 'PENDING'
+                    status: a.status ?? 'PENDING'//Prevenir Reset
                     }))
                 };
             });
