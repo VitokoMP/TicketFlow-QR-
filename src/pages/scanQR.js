@@ -17,10 +17,12 @@ const MAX_BACKOFF_MS = 10000;
 
 export default function ScanQR() {
   console.log('[ScanQR] Componente montándose');
+  
+  // 🔹 OPTIMIZACIÓN: Extraer solo lo esencial del contexto
+  const contexto = useEvento();
   const {
-    eventos = [],
-    asistentes = {},
-    setAsistentes,
+    eventos,
+    asistentes,
     eventoSeleccionado,
     validarTicket,
     setLoading,
@@ -29,7 +31,12 @@ export default function ScanQR() {
     addToBuffer,
     setEventoSeleccionado,
     loadAsistentes
-  } = useEvento();
+  } = contexto;
+
+  // 🔹 OPTIMIZACIÓN: Memoizar setters para estabilidad de referencias
+  const setAsistentes = useCallback((value) => {
+    contexto.setAsistentes(value);
+  }, [contexto]);
 
   console.log('[ScanQR] Contexto cargado', {
     eventosCount: eventos.length,
@@ -44,7 +51,7 @@ export default function ScanQR() {
     lastScanned: "",
     scanningPaused: false,
     scannerState: Html5QrcodeScannerState.NOT_STARTED,
-    pendingTickets: [] // Add this line
+    pendingTickets: []
   });
 
   console.log('[ScanQR] Estado inicial:', scanState);
@@ -64,14 +71,20 @@ export default function ScanQR() {
   const lastScanTimeRef = useRef(0);
   const lastProcessedTicketRef = useRef();
   const lastSyncTimeRef = useRef(0);
-  // Memoización de valores derivados
+  
+  // 🔹 OPTIMIZACIÓN: Memoizar valores derivados
   const hayAsistentes = useMemo(() => 
     eventoSeleccionado?.event_id && asistentes[eventoSeleccionado.event_id]?.length > 0,
     [eventoSeleccionado, asistentes]
   );
 
+  const asistentesDelEvento = useMemo(() => {
+    if (!eventoSeleccionado?.event_id) return [];
+    return asistentes[eventoSeleccionado.event_id] || [];
+  }, [eventoSeleccionado, asistentes]);
+
   // ======================================
-  // FUNCIONES ORIGINALES (todas conservadas)
+  // FUNCIONES ORIGINALES (optimizadas con useCallback)
   // ======================================
 
   const runSerial = useCallback(async (fn, label = "op") => {
@@ -132,9 +145,9 @@ export default function ScanQR() {
     }
   }, []);
 
-  const showToast = (message, type) => {
+  const showToast = useCallback((message, type) => {
     console.log(`[TOAST] ${type.toUpperCase()}: ${message}`);
-  };
+  }, []);
 
   const normalizeUrl = useCallback((urlString) => {
     console.log('[normalizeUrl] Normalizando URL:', urlString);
@@ -151,8 +164,7 @@ export default function ScanQR() {
 
   const safeStopScanner = useCallback(async () => {
     console.log('[safeStopScanner] Iniciando detención segura del escáner');
-    // ... (implementación original completa de safeStopScanner)
-
+    
     if (!qrScanner.current) {
       console.warn('[safeStopScanner] No hay instancia de qrScanner');
       return;
@@ -272,8 +284,6 @@ export default function ScanQR() {
 
   const startScannerCore = useCallback(async () => {
     console.log('[startScannerCore] Iniciando proceso de inicio del escáner');
-    // ... (implementación original completa de startScannerCore)
-    console.log('[startScannerCore] Iniciando proceso de inicio del escáner');
     if (!eventoSeleccionado) {
       console.warn('[startScannerCore] No hay evento seleccionado');
       showToast("Selecciona un evento antes de escanear", "warning");
@@ -354,7 +364,7 @@ export default function ScanQR() {
         }
       }, delay);
     }
-  }, [eventoSeleccionado, runSerial, safeStopScanner]);
+  }, [eventoSeleccionado, runSerial, safeStopScanner, showToast, handleScanSuccess]);
 
   const startScanner = useCallback(async () => {
     console.log('[startScanner] Llamando a startScanner serializado');
@@ -461,10 +471,9 @@ export default function ScanQR() {
             setTimeout(() => { lastProcessedTicketRef.current = null; }, 2000);
         }, 1500);
     }
-}, [eventoSeleccionado, validarTicket, scanState.pendingTickets]);
+}, [eventoSeleccionado, validarTicket, scanState.pendingTickets, showToast]);
 
-// -------------------------
-const resetScannerState = useCallback(() => {
+  const resetScannerState = useCallback(() => {
     console.log('[resetScannerState] Reseteando estado del escáner');
     scanningPausedRef.current = false;
     lastScannedRef.current = "";
@@ -474,11 +483,11 @@ const resetScannerState = useCallback(() => {
         showOverlay: false,
         lastScanned: "",
         scannerState: Html5QrcodeScannerState.SCANNING,
-        pendingTickets: []//receinte 19.08.2025
+        pendingTickets: []
     }));
-}, []);
+  }, []);
 
-const handleScanError = useCallback((error) => {
+  const handleScanError = useCallback((error) => {
     console.error('[handleScanError] Error de escaneo:', error);
     setScanState(prev => ({
         ...prev,
@@ -495,9 +504,9 @@ const handleScanError = useCallback((error) => {
             restartScanner().catch(e => console.error("Error al reiniciar:", e));
         }
     }, 300);
-}, [resetScannerState, restartScanner]);
+  }, [resetScannerState, restartScanner]);
 
-const handleSync = useCallback(async () => {
+  const handleSync = useCallback(async () => {
     console.log('[handleSync] Iniciando sincronización manual');
 
     if (!eventoSeleccionado?.event_id) {
@@ -528,7 +537,7 @@ const handleSync = useCallback(async () => {
                     ...prevState,
                     [eventId]: attendees.map(a => ({
                         ...a,
-                    status: a.status ?? 'PENDING'//Prevenir Reset
+                    status: a.status ?? 'PENDING'
                     }))
                 };
             });
@@ -559,9 +568,16 @@ const handleSync = useCallback(async () => {
             });
         }
     }
-}, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
+  }, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
 
-const renderValidationOverlay = useCallback(() => {
+  const handleEventoChange = useCallback((selectedEvent) => {
+    console.log('[handleEventoChange] Cambiando evento:', selectedEvent.event_id);
+    setEventoSeleccionado(selectedEvent);
+    loadAsistentes(selectedEvent.event_id);
+    resetScannerState();
+  }, [setEventoSeleccionado, loadAsistentes, resetScannerState]);
+
+  const renderValidationOverlay = useCallback(() => {
     if (!scanState.showOverlay || !scanState.validation) {
         console.log('[renderValidationOverlay] Sin overlay para mostrar');
         return null;
@@ -594,10 +610,10 @@ const renderValidationOverlay = useCallback(() => {
             </div>
         </div>
     );
-}, [scanState.showOverlay, scanState.validation, scanState.pendingTickets]);
+  }, [scanState.showOverlay, scanState.validation, scanState.pendingTickets]);
 
   // ======================
-  // EFECTOS OPTIMIZADOS (5)
+  // EFECTOS OPTIMIZADOS
   // ======================
 
   // Efecto #1: Sincronización automática y manejo de visibilidad
@@ -684,50 +700,52 @@ const renderValidationOverlay = useCallback(() => {
   }, [eventoSeleccionado?.event_id, setAsistentes, asistentes, safeCall]);
 
   // Efecto #2: Control maestro de la cámara (Versión optimizada)
-useEffect(() => {
-  const controller = new AbortController();
+  useEffect(() => {
+    const controller = new AbortController();
 
-  const manageCamera = async () => {
-    if (!eventoSeleccionado?.event_id || controller.signal.aborted) return;
+    const manageCamera = async () => {
+      if (!eventoSeleccionado?.event_id || controller.signal.aborted) return;
 
-    console.log('[manageCamera] Asistentes para el evento:', eventoSeleccionado.asistentes?.length || 0);
+      console.log('[manageCamera] Asistentes para el evento:', asistentesDelEvento.length);
 
-    // 1. Manejo de cambio de evento
-    if (eventoSeleccionado.event_id !== lastEventIdRef.current) {
-      console.log('[manageCamera] Evento cambiado, reiniciando escáner');
-      lastEventIdRef.current = eventoSeleccionado.event_id;
-      await stopScanner();
-      if (eventoSeleccionado.asistentes?.length > 0) {
-        await startScanner();
+      // 1. Manejo de cambio de evento
+      if (eventoSeleccionado.event_id !== lastEventIdRef.current) {
+        console.log('[manageCamera] Evento cambiado, reiniciando escáner');
+        lastEventIdRef.current = eventoSeleccionado.event_id;
+        await stopScanner();
+        if (asistentesDelEvento.length > 0) {
+          await startScanner();
+        }
+        return;
       }
-      return;
-    }
 
-  // 2. Control de estado basado en asistentes y pausa
-    const shouldActivate = 
-      eventoSeleccionado.asistentes?.length > 0 && 
-      !scanState.scanningPaused;
-    
-    const shouldDeactivate = 
-      !eventoSeleccionado.asistentes?.length || 
-      scanState.scanningPaused;
+      // 2. Control de estado basado en asistentes y pausa
+      const shouldActivate = 
+        asistentesDelEvento.length > 0 && 
+        !scanState.scanningPaused;
+      
+      const shouldDeactivate = 
+        !asistentesDelEvento.length || 
+        scanState.scanningPaused;
 
-    if (shouldActivate && !scanState.cameraActive) {
-      await startScanner();
-    } else if (shouldDeactivate && scanState.cameraActive) {
-      await stopScanner();
-    }
+      if (shouldActivate && !scanState.cameraActive) {
+        await startScanner();
+      } else if (shouldDeactivate && scanState.cameraActive) {
+        await stopScanner();
+      }
     };
 
     manageCamera();
     return () => controller.abort();
   }, [
-    eventoSeleccionado, // Ahora incluye asistentes
+    eventoSeleccionado,
+    asistentesDelEvento,
     scanState.scanningPaused,
     scanState.cameraActive,
     startScanner,
     stopScanner
   ]);
+
   // Efecto #3: Manejo de validación y overlay
   useEffect(() => {
     validationRef.current = scanState.validation;

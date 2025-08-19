@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { ScannerAPI } from "../services/ApiService";
 import { toast } from 'react-toastify';
 
@@ -11,7 +11,9 @@ export function useEvento() {
 }
 
 export const EventoProvider = ({ children }) => {
-  // [Tus estados y refs existentes...]
+  // -----------------------
+  // Estados y refs
+  // -----------------------
   const [eventos, setEventos] = useState([]);
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null);
   const [asistentes, setAsistentes] = useState({});
@@ -23,17 +25,20 @@ export const EventoProvider = ({ children }) => {
   const syncTimerRef = useRef(null);
   const retryCountRef = useRef(0);
 
-  // 🔍 DEBUG: Log de cambios en asistentes
+  // -----------------------
+  // Debugs de estado
+  // -----------------------
   useEffect(() => {
     console.log('🔍 [DEBUG] Estado global asistentes actualizado:', asistentes);
   }, [asistentes]);
 
-  // 🔍 DEBUG: Log de cambios en eventoSeleccionado
   useEffect(() => {
     console.log('🔍 [DEBUG] eventoSeleccionado actualizado:', eventoSeleccionado);
   }, [eventoSeleccionado]);
 
-  // Efectos de montaje/desmontaje
+  // -----------------------
+  // Montaje / Desmontaje
+  // -----------------------
   useEffect(() => {
     localStorage.removeItem('ticketflow_asistentes');
     const savedBuffer = localStorage.getItem('ticketflow_pending_scans');
@@ -64,7 +69,9 @@ export const EventoProvider = ({ children }) => {
     localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
   }, [syncBufferRef.current.length]);
 
-  // Función para actualizar estado de asistente
+  // -----------------------
+  // Funciones memoizadas
+  // -----------------------
   const updateAsistenteStatus = useCallback((asistenteId, newStatus, fullData = null) => {
     if (!eventoSeleccionado) return false;
 
@@ -108,7 +115,6 @@ export const EventoProvider = ({ children }) => {
     return true;
   }, [eventoSeleccionado]);
 
-  // Cargar asistentes desde backend - VERSIÓN MEJORADA
   const loadAsistentes = useCallback(async (eventId) => {
     const normalizedEventId = String(eventId);
     try {
@@ -124,26 +130,16 @@ export const EventoProvider = ({ children }) => {
 
         console.log(`🔍 [DEBUG] Asistentes cargados desde API:`, asistentesNormalizados);
         
-        // ⚡ ACTUALIZACIÓN SÍNCRONA - Primero el estado global
-        setAsistentes(prev => {
-          const newState = {
-            ...prev,
-            [normalizedEventId]: asistentesNormalizados
-          };
-          console.log('🔍 [DEBUG] Estado global asistentes actualizado:', newState);
-          return newState;
-        });
+        setAsistentes(prev => ({
+          ...prev,
+          [normalizedEventId]: asistentesNormalizados
+        }));
 
-        // ⚡ LUEGO actualizar eventoSeleccionado si corresponde
         if (eventoSeleccionado && eventoSeleccionado.event_id === normalizedEventId) {
-          setEventoSeleccionado(prev => {
-            const newEventState = {
-              ...prev,
-              asistentes: asistentesNormalizados
-            };
-            console.log('🔍 [DEBUG] eventoSeleccionado actualizado:', newEventState);
-            return newEventState;
-          });
+          setEventoSeleccionado(prev => ({
+            ...prev,
+            asistentes: asistentesNormalizados
+          }));
         }
         
         return asistentesNormalizados;
@@ -155,73 +151,6 @@ export const EventoProvider = ({ children }) => {
     }
   }, [eventoSeleccionado]);
 
-  // 🔄 Cargar eventos al inicio - VERSIÓN CORREGIDA
-  useEffect(() => {
-    let isActive = true;
-
-    const loadInitialData = async () => {
-      try {
-        setLoading(true);
-        console.log('🔍 [DEBUG] Iniciando carga inicial de datos...');
-
-        const { success, data: events } = await ScannerAPI.getActiveEvents();
-        if (!isActive) return;
-
-        if (success && events.length > 0) {
-          setEventos(events);
-
-          const today = new Date();
-          const todayEvent = events.find(e => {
-            const start = new Date(e.event_start_date);
-            const end = new Date(e.event_end_date);
-            return today >= start && today <= end;
-          });
-
-          if (todayEvent) {
-            console.log(`🔍 [DEBUG] Evento encontrado para hoy:`, todayEvent);
-            
-            // ⚡ ESPERAR explícitamente a que loadAsistentes termine
-            const loadedAsistentes = await loadAsistentes(todayEvent.event_id);
-            
-            if (isActive && loadedAsistentes) {
-              console.log('🔍 [DEBUG] Configurando estado final...');
-              
-              // ✅ Ahora sí, ambos estados están sincronizados
-              setEventoSeleccionado({
-                ...todayEvent,
-                asistentes: loadedAsistentes
-              });
-              
-              setAsistentesCargados(true);
-              console.log('🔍 [DEBUG] Carga inicial completada exitosamente');
-            }
-          } else {
-            if (isActive) {
-              setEventoSeleccionado(null);
-              setAsistentesCargados(false);
-              toast.info('No hay eventos activos para hoy. El escáner está deshabilitado.');
-            }
-          }
-        } else {
-          toast.info('No hay eventos activos en la plataforma.');
-          setEventoSeleccionado(null);
-          setAsistentesCargados(false);
-        }
-      } catch (error) {
-        if (isActive) {
-          console.error('[Eventos] Error:', error);
-          toast.error('Error al cargar eventos');
-        }
-      } finally {
-        if (isActive) setLoading(false);
-      }
-    };
-
-    loadInitialData();
-    return () => { isActive = false; };
-  }, [loadAsistentes]);
-
-  // [Tus funciones addToBuffer, syncBuffer, validarTicket existentes...]
   const addToBuffer = useCallback((scanData) => {
     syncBufferRef.current.push(scanData);
     localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
@@ -258,7 +187,6 @@ export const EventoProvider = ({ children }) => {
 
       console.log(`🔍 [DEBUG] Validando ticket: ${normalizedTicketCode} para evento: ${normalizedEventId}`);
 
-      // 1. Buscar en ambos estados
       const asistenteFromSelected = eventoSeleccionado?.asistentes?.find(a => 
         String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
         String(a.id).toLowerCase() === normalizedTicketCode
@@ -301,7 +229,6 @@ export const EventoProvider = ({ children }) => {
         };
       }
 
-      // 2. Validar con backend si no está localmente
       const checkResult = await ScannerAPI.checkTicketStatus(normalizedEventId, normalizedTicketCode);
       
       if (checkResult.success && checkResult.data?.asistente) {
@@ -356,25 +283,105 @@ export const EventoProvider = ({ children }) => {
     }
   }, [eventoSeleccionado, asistentes, updateAsistenteStatus, addToBuffer]);
 
+  // -----------------------
+  // Cargar eventos al inicio
+  // -----------------------
+  useEffect(() => {
+    let isActive = true;
+
+    const loadInitialData = async () => {
+      try {
+        setLoading(true);
+        console.log('🔍 [DEBUG] Iniciando carga inicial de datos...');
+
+        const { success, data: events } = await ScannerAPI.getActiveEvents();
+        if (!isActive) return;
+
+        if (success && events.length > 0) {
+          setEventos(events);
+
+          const today = new Date();
+          const todayEvent = events.find(e => {
+            const start = new Date(e.event_start_date);
+            const end = new Date(e.event_end_date);
+            return today >= start && today <= end;
+          });
+
+          if (todayEvent) {
+            console.log(`🔍 [DEBUG] Evento encontrado para hoy:`, todayEvent);
+            
+            const loadedAsistentes = await loadAsistentes(todayEvent.event_id);
+            
+            if (isActive && loadedAsistentes) {
+              console.log('🔍 [DEBUG] Configurando estado final...');
+              
+              setEventoSeleccionado({
+                ...todayEvent,
+                asistentes: loadedAsistentes
+              });
+              
+              setAsistentesCargados(true);
+              console.log('🔍 [DEBUG] Carga inicial completada exitosamente');
+            }
+          } else {
+            if (isActive) {
+              setEventoSeleccionado(null);
+              setAsistentesCargados(false);
+              toast.info('No hay eventos activos para hoy. El escáner está deshabilitado.');
+            }
+          }
+        } else {
+          toast.info('No hay eventos activos en la plataforma.');
+          setEventoSeleccionado(null);
+          setAsistentesCargados(false);
+        }
+      } catch (error) {
+        if (isActive) {
+          console.error('[Eventos] Error:', error);
+          toast.error('Error al cargar eventos');
+        }
+      } finally {
+        if (isActive) setLoading(false);
+      }
+    };
+
+    loadInitialData();
+    return () => { isActive = false; };
+  }, [loadAsistentes]);
+
+  // -----------------------
+  // Memoizar value del Provider
+  // -----------------------
+  const contextValue = useMemo(() => ({
+    eventos,
+    asistentes,
+    loading,
+    eventoSeleccionado,
+    asistentesCargados,
+    loadAsistentes,
+    validarTicket,
+    updateAsistenteStatus,
+    addToBuffer,
+    syncBuffer,
+    setEventos,
+    setEventoSeleccionado,
+    setLoading,
+    setAsistentes
+  }), [
+    eventos,
+    asistentes,
+    loading,
+    eventoSeleccionado,
+    asistentesCargados,
+    loadAsistentes,
+    validarTicket,
+    updateAsistenteStatus,
+    addToBuffer,
+    syncBuffer
+  ]);
+
   return (
-    <EventoContext.Provider
-      value={{
-        eventos,
-        asistentes,
-        loading,
-        eventoSeleccionado,
-        asistentesCargados,
-        loadAsistentes,
-        validarTicket,
-        updateAsistenteStatus,
-        addToBuffer,
-        syncBuffer,
-        setEventos,
-        setEventoSeleccionado,
-        setLoading,
-        setAsistentes
-      }}
-    >
+    <EventoContext.Provider value={contextValue}>
       {children}
     </EventoContext.Provider>
   );
