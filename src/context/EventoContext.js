@@ -87,6 +87,8 @@ export const EventoProvider = ({ children }) => {
       const updated = [...current];
       if (idx !== -1) {
         updated[idx] = { ...updated[idx], status: newStatus, ...(fullData || {}) };
+        console.log(`[DEBUG] Actualizando asistente ${normalizedId}:`, updated[idx]);
+
       } else if (fullData) {
         updated.push({ ...fullData, status: newStatus, id: normalizedId });
       }
@@ -120,8 +122,7 @@ export const EventoProvider = ({ children }) => {
     try {
       console.log(`🔍 [DEBUG] Cargando asistentes para evento: ${normalizedEventId}`);
       const result = await ScannerAPI.syncAttendees(normalizedEventId);
-      console.log('🔍 [DEBUG] Antes de setAsistentes:', asistentes);
-
+      
       if (result.success) {
         const asistentesNormalizados = result.data.map(a => ({
           ...a,
@@ -135,7 +136,6 @@ export const EventoProvider = ({ children }) => {
           ...prev,
           [normalizedEventId]: asistentesNormalizados
         }));
-          console.log('🔍 [DEBUG] Después de setAsistentes:', updated);
 
         if (eventoSeleccionado && eventoSeleccionado.event_id === normalizedEventId) {
           setEventoSeleccionado(prev => ({
@@ -292,60 +292,67 @@ export const EventoProvider = ({ children }) => {
     let isActive = true;
 
     const loadInitialData = async () => {
-      try {
-        setLoading(true);
-        console.log('🔍 [DEBUG] Iniciando carga inicial de datos...');
+  try {
+    setLoading(true);
+    console.log('🔍 [DEBUG] Iniciando carga inicial de datos...');
 
-        const { success, data: events } = await ScannerAPI.getActiveEvents();
-        if (!isActive) return;
+    const { success, data: events } = await ScannerAPI.getActiveEvents();
+    if (!isActive) return;
 
-        if (success && events.length > 0) {
-          setEventos(events);
+    if (success && events.length > 0) {
+      setEventos(events);
 
-          const today = new Date();
-          const todayEvent = events.find(e => {
-            const start = new Date(e.event_start_date);
-            const end = new Date(e.event_end_date);
-            return today >= start && today <= end;
+      // Solo una vez, para comparar fechas sin horas
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const todayEvent = events.find(e => {
+        const start = new Date(e.event_start_date);
+        const end = new Date(e.event_end_date);
+
+        start.setHours(0, 0, 0, 0);
+        end.setHours(0, 0, 0, 0);
+
+        return today >= start && today <= end;
+      });
+
+      if (todayEvent) {
+        console.log(`🔍 [DEBUG] Evento encontrado para hoy:`, todayEvent);
+
+        const loadedAsistentes = await loadAsistentes(todayEvent.event_id);
+
+        if (isActive && loadedAsistentes) {
+          console.log('🔍 [DEBUG] Configurando estado final...');
+
+          setEventoSeleccionado({
+            ...todayEvent,
+            asistentes: loadedAsistentes
           });
 
-          if (todayEvent) {
-            console.log(`🔍 [DEBUG] Evento encontrado para hoy:`, todayEvent);
-            
-            const loadedAsistentes = await loadAsistentes(todayEvent.event_id);
-            
-            if (isActive && loadedAsistentes) {
-              console.log('🔍 [DEBUG] Configurando estado final...');
-              
-              setEventoSeleccionado({
-                ...todayEvent,
-                asistentes: loadedAsistentes
-              });
-              
-              setAsistentesCargados(true);
-              console.log('🔍 [DEBUG] Carga inicial completada exitosamente');
-            }
-          } else {
-            if (isActive) {
-              setEventoSeleccionado(null);
-              setAsistentesCargados(false);
-              toast.info('No hay eventos activos para hoy. El escáner está deshabilitado.');
-            }
-          }
-        } else {
-          toast.info('No hay eventos activos en la plataforma.');
+          setAsistentesCargados(true);
+          console.log('🔍 [DEBUG] Carga inicial completada exitosamente');
+        }
+      } else {
+        if (isActive) {
           setEventoSeleccionado(null);
           setAsistentesCargados(false);
+          toast.info('No hay eventos activos para hoy. El escáner está deshabilitado.');
         }
-      } catch (error) {
-        if (isActive) {
-          console.error('[Eventos] Error:', error);
-          toast.error('Error al cargar eventos');
-        }
-      } finally {
-        if (isActive) setLoading(false);
       }
-    };
+    } else {
+      toast.info('No hay eventos activos en la plataforma.');
+      setEventoSeleccionado(null);
+      setAsistentesCargados(false);
+    }
+  } catch (error) {
+    if (isActive) {
+      console.error('[Eventos] Error:', error);
+      toast.error('Error al cargar eventos');
+    }
+  } finally {
+    if (isActive) setLoading(false);
+  }
+};
 
     loadInitialData();
     return () => { isActive = false; };
