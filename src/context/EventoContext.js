@@ -120,12 +120,13 @@ export const EventoProvider = ({ children }) => {
     try {
       console.log(`🔍 [DEBUG] Cargando asistentes para evento: ${normalizedEventId}`);
       const result = await ScannerAPI.syncAttendees(normalizedEventId);
-      
+      console.log('🔍 [DEBUG] Antes de setAsistentes:', asistentes);
+
       if (result.success) {
         const asistentesNormalizados = result.data.map(a => ({
           ...a,
           id: String(a.id),
-          status: a.status === 'scanned' ? 'SCANNED' : 'PENDING'
+          status: a.status.toUpperCase() // SCANNED o PENDING
         }));
 
         console.log(`🔍 [DEBUG] Asistentes cargados desde API:`, asistentesNormalizados);
@@ -134,6 +135,7 @@ export const EventoProvider = ({ children }) => {
           ...prev,
           [normalizedEventId]: asistentesNormalizados
         }));
+          console.log('🔍 [DEBUG] Después de setAsistentes:', updated);
 
         if (eventoSeleccionado && eventoSeleccionado.event_id === normalizedEventId) {
           setEventoSeleccionado(prev => ({
