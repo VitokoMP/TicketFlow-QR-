@@ -1,0 +1,9 @@
+
+
+/* Estilo para el pie de página */
+.footer {
+    background-color: #222; /* Fondo oscuro */
+    color: #FFD700; /* Texto amarillo */
+    padding: 10px 20px;
+    text-align: center;
+}
