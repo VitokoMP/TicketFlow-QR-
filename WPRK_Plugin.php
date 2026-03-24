@@ -4,7 +4,7 @@
  * Author URI: https://github.com/VitokoMp
  * Description: Plugin de validación de entradas con códigos QR para eventos en WordPress.
  * Author: AlekhArt.codes
- * Version: 1.4.9
+ * Version: 1.5
  * License: GPL2
  * Text-Domain: wp-react-ticketflow-qr 
  */

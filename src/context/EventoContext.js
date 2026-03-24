@@ -156,7 +156,9 @@ export const EventoProvider = ({ children }) => {
   const addToBuffer = useCallback((scanData) => {
     syncBufferRef.current.push(scanData);
     localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
-    if (isOnline) syncBuffer();
+    //if (isOnline) syncBuffer();
+    console.log(`[Buffer] Agregado. Total: ${syncBufferRef.current.length}`);
+
   }, [isOnline]);
 
   const syncBuffer = useCallback(async () => {
@@ -231,59 +233,80 @@ export const EventoProvider = ({ children }) => {
         };
       }
 
-      const checkResult = await ScannerAPI.checkTicketStatus(normalizedEventId, normalizedTicketCode);
+const validarTicket = useCallback(async (eventId, ticketCode) => {
+  try {
+    const normalizedEventId = String(eventId);
+    const normalizedTicketCode = String(ticketCode).toLowerCase().trim();
+
+    console.log(`🔍 [DEBUG] Validando ticket: ${normalizedTicketCode} para evento: ${normalizedEventId}`);
+
+    const asistenteFromSelected = eventoSeleccionado?.asistentes?.find(a => 
+      String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
+      String(a.id).toLowerCase() === normalizedTicketCode
+    );
+
+    const asistenteFromGlobal = asistentes[eventId]?.find(a => 
+      String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
+      String(a.id).toLowerCase() === normalizedTicketCode
+    );
+
+    const asistente = asistenteFromSelected || asistenteFromGlobal;
+
+    // ✅ CASO 1: Ticket encontrado en caché
+    if (asistente) {
+      console.log(`🔍 [DEBUG] Asistente encontrado:`, asistente);
       
-      if (checkResult.success && checkResult.data?.asistente) {
-        const asistente = checkResult.data.asistente;
-        const { valid } = checkResult.data;
-        
-        if (!valid) {
-          return { 
-            success: false, 
-            type: 'invalid', 
-            message: 'Ticket no válido para este evento' 
-          };
-        }
-
-        const normalizedAsistente = {
-          ...asistente,
-          id: String(asistente.id),
-          event_id: normalizedEventId,
-          status: 'SCANNED'
-        };
-
-        updateAsistenteStatus(asistente.id, 'SCANNED', normalizedAsistente);
-        addToBuffer({
-          ticket_id: String(asistente.id),
-          event_id: normalizedEventId,
-          status: 'SCANNED',
-          source: 'backend',
-          asistente: normalizedAsistente
-        });
-
+      if (asistente.status === 'SCANNED') {
+        console.log(`🔍 [DEBUG] Ticket ya validado anteriormente`);
         return { 
-          success: true, 
-          type: 'valid', 
-          message: `Validado: ${asistente.nombre}`,
-          asistente: normalizedAsistente 
+          success: false, 
+          type: 'ya-validado', 
+          message: `Ticket ya validado: ${asistente.nombre}`,
+          asistente 
         };
       }
 
-      return { 
-        success: false, 
-        type: 'error', 
-        message: checkResult.message || 'Error al validar ticket' 
-      };
+      console.log(`🔍 [DEBUG] Marcando como SCANNED...`);
+      updateAsistenteStatus(asistente.id, 'SCANNED');
+      
+      // ✅ Usar push directo, no addToBuffer
+      syncBufferRef.current.push({ 
+        ticket_id: String(asistente.id), 
+        event_id: normalizedEventId, 
+        status: 'SCANNED', 
+        source: 'local' 
+      });
+      localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
 
-    } catch (error) {
-      console.error('[Validación] Error:', error);
       return { 
-        success: false, 
-        type: 'error', 
-        message: error.message || 'Error inesperado' 
+        success: true, 
+        type: 'valid', 
+        message: `Validado: ${asistente.nombre}`,
+        asistente 
       };
     }
-  }, [eventoSeleccionado, asistentes, updateAsistenteStatus, addToBuffer]);
+
+    // ✅ CASO 2: Ticket NO encontrado → INVÁLIDO (SIN BACKEND)
+    console.log(`🔍 [DEBUG] Ticket NO encontrado en caché`);
+    return { 
+      success: false, 
+      type: 'invalid', 
+      message: 'Ticket no válido para este evento. Sincroniza los asistentes si crees que debería estar.'
+    };
+
+  } catch (error) {
+    console.error('[Validación] Error:', error);
+    return { 
+      success: false, 
+      type: 'error', 
+      message: error.message || 'Error inesperado' 
+    };
+  }
+}, [eventoSeleccionado, asistentes, updateAsistenteStatus]);
+//Modificaciones Importantes:
+//1. Validación estricta solo contra caché local (eventoSeleccionado y asistentes global).
+//2. Eliminación de llamadas API en validarTicket para evitar inconsistencias y latencia.
+//3. Mensajes de retorno más claros para cada caso (válido, ya validado, inválido).
 
   // -----------------------
   // Cargar eventos al inicio
