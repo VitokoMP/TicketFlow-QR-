@@ -184,55 +184,6 @@ export const EventoProvider = ({ children }) => {
     }
   }, [isOnline]);
 
-  const validarTicket = useCallback(async (eventId, ticketCode) => {
-    try {
-      const normalizedEventId = String(eventId);
-      const normalizedTicketCode = String(ticketCode).toLowerCase().trim();
-
-      console.log(`🔍 [DEBUG] Validando ticket: ${normalizedTicketCode} para evento: ${normalizedEventId}`);
-
-      const asistenteFromSelected = eventoSeleccionado?.asistentes?.find(a => 
-        String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
-        String(a.id).toLowerCase() === normalizedTicketCode
-      );
-
-      const asistenteFromGlobal = asistentes[eventId]?.find(a => 
-        String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
-        String(a.id).toLowerCase() === normalizedTicketCode
-      );
-
-      const asistente = asistenteFromSelected || asistenteFromGlobal;
-
-      if (asistente) {
-        console.log(`🔍 [DEBUG] Asistente encontrado:`, asistente);
-        
-        if (asistente.status === 'SCANNED') {
-          console.log(`🔍 [DEBUG] Ticket ya validado anteriormente`);
-          return { 
-            success: false, 
-            type: 'ya-validado', 
-            message: `Ticket ya validado: ${asistente.nombre}`,
-            asistente 
-          };
-        }
-
-        console.log(`🔍 [DEBUG] Marcando como SCANNED...`);
-        updateAsistenteStatus(asistente.id, 'SCANNED');
-        addToBuffer({ 
-          ticket_id: String(asistente.id), 
-          event_id: normalizedEventId, 
-          status: 'SCANNED', 
-          source: 'local' 
-        });
-
-        return { 
-          success: true, 
-          type: 'valid', 
-          message: `Validado: ${asistente.nombre}`,
-          asistente 
-        };
-      }
-
 const validarTicket = useCallback(async (eventId, ticketCode) => {
   try {
     const normalizedEventId = String(eventId);
@@ -303,10 +254,6 @@ const validarTicket = useCallback(async (eventId, ticketCode) => {
     };
   }
 }, [eventoSeleccionado, asistentes, updateAsistenteStatus]);
-//Modificaciones Importantes:
-//1. Validación estricta solo contra caché local (eventoSeleccionado y asistentes global).
-//2. Eliminación de llamadas API en validarTicket para evitar inconsistencias y latencia.
-//3. Mensajes de retorno más claros para cada caso (válido, ya validado, inválido).
 
   // -----------------------
   // Cargar eventos al inicio
