@@ -789,7 +789,7 @@ export default function ScanQR() {
   return (
     <div className="scanner-container">
       <header className="header">
-        <div className="logo">TicketFlow QR</div>
+        <div className="logo">BlueTicket QR</div>
       </header>
 
       <div className="scanner-content">

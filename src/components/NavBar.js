@@ -6,7 +6,7 @@ const NavBar = () => {
   return (
     <>
       <header className="header">
-        <div className="logo">🎟️ TicketFlow</div>
+        <div className="logo">🎟️ Blue Ticket Demo</div>
 
         <div className="user-settings">
           <span>👤 Usuario</span>

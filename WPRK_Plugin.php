@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Plugin Name: TicketFlow QR
  * Author URI: https://github.com/VitokoMp

@@ -11,7 +11,7 @@ export default function Splash() {
 
   return (
     <div className="flex items-center justify-center h-screen bg-black text-yellow-400">
-      <h1 className="text-4xl font-bold animate-pulse">TicketFlow</h1>
+      <h1 className="text-4xl font-bold animate-pulse">Demo Ticket</h1>
     </div>
   );
 }
