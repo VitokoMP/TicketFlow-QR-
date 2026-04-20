@@ -42,12 +42,12 @@ class TicketFlow_Core {
     private function init_components() {
         $this->roles = TicketFlow_Roles::instance();
         $this->admin = TicketFlow_Admin::instance();
-        $this->rest_api = TicketFlow_REST_API::instance();
         $this->cpt = TicketFlow_CPT::instance();
+        $this->rest_api = TicketFlow_REST_API::instance();
     }
 
     private function register_hooks() {
-        add_action('plugins_loaded', [$this, 'diagnostic_check']);
+        add_action('init', [$this, 'diagnostic_check']);
         add_action('admin_menu', [$this, 'add_sync_menu_page']);
         add_action('admin_init', [$this, 'handle_sync_request']);
         add_action('init', [$this, 'check_security_headers']);

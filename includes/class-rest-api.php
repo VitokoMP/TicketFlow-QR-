@@ -9,7 +9,7 @@ class TicketFlow_REST_API {
         return self::$instance;
     }
     
-    public function __construct() {
+    private function __construct() {
         add_action('rest_api_init', [$this, 'register_routes']);
         
             // Endpoint para mantener sesión
