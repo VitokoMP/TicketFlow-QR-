@@ -22,13 +22,13 @@ document.addEventListener('DOMContentLoaded', function () {
         const root = createRoot(element);
         root.render(
             <HashRouter>
-                <React.StrictMode>
+                
                     <ErrorBoundary>
                         <EventoProvider>
                             <App /> 
                         </EventoProvider>
                     </ErrorBoundary>
-                </React.StrictMode>
+
                 <ToastContainer position="top-right"
                     autoClose={5000}
                     hideProgressBar={false}

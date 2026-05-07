@@ -145,9 +145,10 @@ export default function ScanQR() {
     }
   }, []);
 
-  const showToast = useCallback((message, type) => {
+const showToast = useCallback((message, type) => {
     console.log(`[TOAST] ${type.toUpperCase()}: ${message}`);
-  }, []);
+    toast[type]?.(message) || toast(message);
+}, []);
 
   const normalizeUrl = useCallback((urlString) => {
     console.log('[normalizeUrl] Normalizando URL:', urlString);
@@ -817,13 +818,21 @@ export default function ScanQR() {
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
         </div>
 
-        <div className="sync-button-container">
+        <div className="sync-button-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px' }}>
           <button
             className="sync-button"
             onClick={handleSync}
             disabled={scanState.scanningPaused || !eventoSeleccionado}
           >
-            {scanState.cameraActive ? "Re-sincronizar" : "Sincronizar Asistentes"}
+            🔄 Re-sincronizar asistentes
+          </button>
+          <button
+            className="sync-button"
+            onClick={() => contexto.syncBuffer()}
+            disabled={!eventoSeleccionado}
+            style={{ backgroundColor: '#e6a817' }}
+          >
+            ✅ Confirmar evento en base de datos
           </button>
         </div>
       </div>

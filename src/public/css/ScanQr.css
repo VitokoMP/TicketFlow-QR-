@@ -49,8 +49,11 @@
 /* Contenedor del botón (opcional, solo si quieres centrar) */
 .sync-button-container {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   margin-top: 20px;
+  width: 100%;
 }
 
 /* Botón real */
@@ -69,6 +72,8 @@
   box-shadow: 0 4px 6px rgba(255, 215, 0, 0.2);
   overflow: hidden;
   cursor: pointer;
+  width: 80%;
+  max-width: 400px;
 }
 
 /* Shine effect */
