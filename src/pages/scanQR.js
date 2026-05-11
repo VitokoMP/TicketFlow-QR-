@@ -15,10 +15,61 @@ const STOP_RETRY_MAX = 8;
 const STOP_RETRY_BASE_MS = 120;
 const MAX_BACKOFF_MS = 10000;
 
+// ==========================================
+// 🔍 DIAGNÓSTICO: Buffer circular en memoria
+// ==========================================
+const DIAG_BUFFER_MAX = 200;
+const diagBuffer = [];
+const diagBufferTimestamps = [];
+
+function diagLog(tag, data = {}) {
+  const entry = {
+    ts: new Date().toISOString(),
+    tag,
+    ...data
+  };
+  diagBuffer.push(entry);
+  diagBufferTimestamps.push(entry.ts);
+  
+  if (diagBuffer.length > DIAG_BUFFER_MAX) {
+    diagBuffer.shift();
+    diagBufferTimestamps.shift();
+  }
+  
+  console.log(`[${tag}]`, data);
+}
+
+window.__getDiagLogs = () => {
+  console.table(diagBuffer);
+  console.log(`Total logs capturados: ${diagBuffer.length}`);
+  return diagBuffer;
+};
+
+window.__downloadDiagLogs = () => {
+  const blob = new Blob([JSON.stringify(diagBuffer, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `scanqr-diag-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  console.log('📥 Logs descargados como JSON');
+};
+
+window.__clearDiagLogs = () => {
+  diagBuffer.length = 0;
+  diagBufferTimestamps.length = 0;
+  console.log('🧹 Buffer de diagnóstico limpiado');
+};
+
+console.log('🔍 Diagnóstico en memoria activo. Comandos disponibles:');
+console.log('  __getDiagLogs()      - Ver todos los logs en tabla');
+console.log('  __downloadDiagLogs() - Descargar logs como JSON');
+console.log('  __clearDiagLogs()    - Limpiar buffer');
+
 export default function ScanQR() {
   console.log('[ScanQR] Componente montándose');
   
-  // 🔹 OPTIMIZACIÓN: Extraer solo lo esencial del contexto
   const contexto = useEvento();
   const {
     eventos,
@@ -33,7 +84,6 @@ export default function ScanQR() {
     loadAsistentes
   } = contexto;
 
-  // 🔹 OPTIMIZACIÓN: Memoizar setters para estabilidad de referencias
   const setAsistentes = useCallback((value) => {
     contexto.setAsistentes(value);
   }, [contexto]);
@@ -72,7 +122,6 @@ export default function ScanQR() {
   const lastProcessedTicketRef = useRef();
   const lastSyncTimeRef = useRef(0);
   
-  // 🔹 OPTIMIZACIÓN: Memoizar valores derivados
   const hayAsistentes = useMemo(() => 
     eventoSeleccionado?.event_id && asistentes[eventoSeleccionado.event_id]?.length > 0,
     [eventoSeleccionado, asistentes]
@@ -84,7 +133,7 @@ export default function ScanQR() {
   }, [eventoSeleccionado, asistentes]);
 
   // ======================================
-  // FUNCIONES ORIGINALES (optimizadas con useCallback)
+  // FUNCIONES ORIGINALES
   // ======================================
 
   const runSerial = useCallback(async (fn, label = "op") => {
@@ -145,10 +194,10 @@ export default function ScanQR() {
     }
   }, []);
 
-const showToast = useCallback((message, type) => {
+  const showToast = useCallback((message, type) => {
     console.log(`[TOAST] ${type.toUpperCase()}: ${message}`);
     toast[type]?.(message) || toast(message);
-}, []);
+  }, []);
 
   const normalizeUrl = useCallback((urlString) => {
     console.log('[normalizeUrl] Normalizando URL:', urlString);
@@ -385,31 +434,29 @@ const showToast = useCallback((message, type) => {
     }, "restartScanner");
   }, [runSerial, safeStopScanner, startScannerCore]);
 
-    // 🔍 LOG DIAGNÓSTICO: Detección de recreación del callback
-  console.log('[SCAN_HANDLER_CREATED]', {
-    timestamp: new Date().toISOString(),
+  // 🔍 LOG DIAGNÓSTICO: Detección de recreación del callback
+  diagLog('SCAN_HANDLER_CREATED', {
     handlerId: Math.random().toString(36).substr(2, 9)
   });
+
   const handleScanSuccess = useCallback(async (decodedText) => { 
-    const now = Date.now();   
+    const now = Date.now();
+    
     // 🔍 LOG DIAGNÓSTICO: Cada vez que la cámara detecta un QR
-    console.log('[QR_DETECTED]', {
-      timestamp: new Date().toISOString(),
-      qrText: decodedText.substring(0, 50) + (decodedText.length > 50 ? '...' : ''),
-      callStack: new Error().stack.split('\n')[2]?.trim()
+    diagLog('QR_DETECTED', {
+      qrPreview: decodedText.substring(0, 50) + (decodedText.length > 50 ? '...' : ''),
+      callOrigin: new Error().stack.split('\n')[2]?.trim()
     });
 
-          // 🔹 Anti-spam (no más de 1 scan cada 1.5s)
-      if (lastScanTimeRef.current && (now - lastScanTimeRef.current) < 1500) {
-          // 🔍 LOG DIAGNÓSTICO: Anti-spam activado
-          console.log('[SPAM_BLOCKED]', {
-            timestamp: new Date().toISOString(),
-            timeSinceLastScan: now - lastScanTimeRef.current,
-            ticketPreview: decodedText.substring(0, 30)
-          });
-          return;
-      }
-    
+    // 🔹 Anti-spam (no más de 1 scan cada 1.5s)
+    if (lastScanTimeRef.current && (now - lastScanTimeRef.current) < 1500) {
+      // 🔍 LOG DIAGNÓSTICO: Anti-spam activado
+      diagLog('SPAM_BLOCKED', {
+        timeSinceLastScanMs: now - lastScanTimeRef.current,
+        ticketPreview: decodedText.substring(0, 30)
+      });
+      return;
+    }
     lastScanTimeRef.current = now;
 
     // 🔹 Condiciones mínimas
@@ -450,13 +497,11 @@ const showToast = useCallback((message, type) => {
     }));
 
     try {
-
         // 🔍 LOG DIAGNÓSTICO: Inicio de validación
-        console.log('[VALIDATION_START]', {
-          timestamp: new Date().toISOString(),
+        diagLog('VALIDATION_START', {
           eventId: eventoSeleccionado.event_id,
           ticket: normalizedTicket,
-          pendingTicketsCount: scanState.pendingTickets?.length || 0
+          pendingCount: scanState.pendingTickets?.length || 0
         });
 
         // ✅ Validación centralizada en el contexto
@@ -498,7 +543,7 @@ const showToast = useCallback((message, type) => {
             setTimeout(() => { lastProcessedTicketRef.current = null; }, 2000);
         }, 1500);
     }
-}, [eventoSeleccionado, validarTicket, scanState.pendingTickets, showToast]);
+  }, [eventoSeleccionado, validarTicket, scanState.pendingTickets, showToast]);
 
   const resetScannerState = useCallback(() => {
     console.log('[resetScannerState] Reseteando estado del escáner');
@@ -533,8 +578,18 @@ const showToast = useCallback((message, type) => {
     }, 300);
   }, [resetScannerState, restartScanner]);
 
-  const handleSync = useCallback(async () => {
+const handleSync = useCallback(async () => {
     console.log('[handleSync] Iniciando sincronización manual');
+
+    // 🔒 COOLDOWN: Evita múltiples sincronizaciones en 20 segundos
+    const now = Date.now();
+    if (now - syncCooldownRef.current < 20000) {
+        const remaining = Math.ceil((20000 - (now - syncCooldownRef.current)) / 1000);
+        console.warn('[handleSync] Cooldown activo, faltan', remaining, 'segundos');
+        showToast(`Espera ${remaining}s antes de volver a sincronizar`, 'warning');
+        return;
+    }
+    syncCooldownRef.current = now;
 
     if (!eventoSeleccionado?.event_id) {
         const errorMsg = 'No hay evento seleccionado para sincronizar';
@@ -595,7 +650,7 @@ const showToast = useCallback((message, type) => {
             });
         }
     }
-  }, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
+}, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
 
   const handleEventoChange = useCallback((selectedEvent) => {
     console.log('[handleEventoChange] Cambiando evento:', selectedEvent.event_id);
@@ -726,7 +781,7 @@ const showToast = useCallback((message, type) => {
     };
   }, [eventoSeleccionado?.event_id, setAsistentes, asistentes, safeCall]);
 
-  // Efecto #2: Control maestro de la cámara (Versión optimizada)
+  // Efecto #2: Control maestro de la cámara
   useEffect(() => {
     const controller = new AbortController();
 
@@ -735,7 +790,6 @@ const showToast = useCallback((message, type) => {
 
       console.log('[manageCamera] Asistentes para el evento:', asistentesDelEvento.length);
 
-      // 1. Manejo de cambio de evento
       if (eventoSeleccionado.event_id !== lastEventIdRef.current) {
         console.log('[manageCamera] Evento cambiado, reiniciando escáner');
         lastEventIdRef.current = eventoSeleccionado.event_id;
@@ -746,7 +800,6 @@ const showToast = useCallback((message, type) => {
         return;
       }
 
-      // 2. Control de estado basado en asistentes y pausa
       const shouldActivate = 
         asistentesDelEvento.length > 0 && 
         !scanState.scanningPaused;
@@ -859,6 +912,15 @@ const showToast = useCallback((message, type) => {
             style={{ backgroundColor: '#e6a817' }}
           >
             ✅ Confirmar evento en base de datos
+          </button>
+          
+          {/* 🔍 BOTÓN DE DIAGNÓSTICO */}
+          <button
+            className="sync-button"
+            onClick={() => window.__downloadDiagLogs?.()}
+            style={{ backgroundColor: '#666', color: '#fff' }}
+          >
+            📥 Descargar Logs de Diagnóstico
           </button>
         </div>
       </div>
