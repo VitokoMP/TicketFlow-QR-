@@ -121,6 +121,7 @@ export default function ScanQR() {
   const lastScanTimeRef = useRef(0);
   const lastProcessedTicketRef = useRef();
   const lastSyncTimeRef = useRef(0);
+  const syncCooldownRef = useRef(0);  // 🔒 Cooldown de 20s para sync manual
   
   const hayAsistentes = useMemo(() => 
     eventoSeleccionado?.event_id && asistentes[eventoSeleccionado.event_id]?.length > 0,
@@ -266,7 +267,7 @@ export default function ScanQR() {
         }
 
         const waitMs = STOP_RETRY_BASE_MS * Math.pow(2, attempt - 1);
-        console.log(`[safeStopScanner] Esperando ${waitMs}ms antes de reintentar`);
+        console.log(`[safeStopScanner] Esperando ${waitMs}minutos antes de reintentar`);
         await new Promise(res => setTimeout(res, waitMs));
       }
     }
@@ -583,9 +584,9 @@ const handleSync = useCallback(async () => {
 
     // 🔒 COOLDOWN: Evita múltiples sincronizaciones en 20 segundos
     const now = Date.now();
-    if (now - syncCooldownRef.current < 20000) {
-        const remaining = Math.ceil((20000 - (now - syncCooldownRef.current)) / 1000);
-        console.warn('[handleSync] Cooldown activo, faltan', remaining, 'segundos');
+    if (now - syncCooldownRef.current < 1200000) {
+        const remaining = Math.ceil((1200000 - (now - syncCooldownRef.current)) / 60000);
+        console.warn('[handleSync] Cooldown activo, faltan', remaining, 'minutos');
         showToast(`Espera ${remaining}s antes de volver a sincronizar`, 'warning');
         return;
     }
