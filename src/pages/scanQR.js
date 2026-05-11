@@ -385,14 +385,31 @@ const showToast = useCallback((message, type) => {
     }, "restartScanner");
   }, [runSerial, safeStopScanner, startScannerCore]);
 
+    // 🔍 LOG DIAGNÓSTICO: Detección de recreación del callback
+  console.log('[SCAN_HANDLER_CREATED]', {
+    timestamp: new Date().toISOString(),
+    handlerId: Math.random().toString(36).substr(2, 9)
+  });
   const handleScanSuccess = useCallback(async (decodedText) => { 
-    const now = Date.now();
+    const now = Date.now();   
+    // 🔍 LOG DIAGNÓSTICO: Cada vez que la cámara detecta un QR
+    console.log('[QR_DETECTED]', {
+      timestamp: new Date().toISOString(),
+      qrText: decodedText.substring(0, 50) + (decodedText.length > 50 ? '...' : ''),
+      callStack: new Error().stack.split('\n')[2]?.trim()
+    });
 
-    // 🔹 Anti-spam (no más de 1 scan cada 1.5s)
-    if (lastScanTimeRef.current && (now - lastScanTimeRef.current) < 1500) {
-        console.warn('[Scan] Bloqueado: escaneo demasiado rápido');
-        return;
-    }
+          // 🔹 Anti-spam (no más de 1 scan cada 1.5s)
+      if (lastScanTimeRef.current && (now - lastScanTimeRef.current) < 1500) {
+          // 🔍 LOG DIAGNÓSTICO: Anti-spam activado
+          console.log('[SPAM_BLOCKED]', {
+            timestamp: new Date().toISOString(),
+            timeSinceLastScan: now - lastScanTimeRef.current,
+            ticketPreview: decodedText.substring(0, 30)
+          });
+          return;
+      }
+    
     lastScanTimeRef.current = now;
 
     // 🔹 Condiciones mínimas
@@ -433,6 +450,15 @@ const showToast = useCallback((message, type) => {
     }));
 
     try {
+
+        // 🔍 LOG DIAGNÓSTICO: Inicio de validación
+        console.log('[VALIDATION_START]', {
+          timestamp: new Date().toISOString(),
+          eventId: eventoSeleccionado.event_id,
+          ticket: normalizedTicket,
+          pendingTicketsCount: scanState.pendingTickets?.length || 0
+        });
+
         // ✅ Validación centralizada en el contexto
         const result = await validarTicket(eventoSeleccionado.event_id, normalizedTicket);
 
