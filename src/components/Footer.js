@@ -1,3 +1,4 @@
+import React, { useCallback, useRef, useState } from "react";
 const Footer = () => {
   return (
 <footer className="footer">
