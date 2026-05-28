@@ -20,7 +20,7 @@ const initDemoMode = () => {
   const queryParams = new URLSearchParams(window.location.search);
   const isDemoQuery = queryParams.get('demo') === 'true';
   const isDemoStorage = localStorage.getItem('TICKET_FLOW_DEMO') === 'true';
-  const isDemoEnv = process.env.DEMO_MODE === 'true';
+  const isDemoEnv = typeof process !== 'undefined' && process.env && process.env.DEMO_MODE === 'true';
 
   const demoMode = isDemoQuery || isDemoStorage || isDemoEnv;
   

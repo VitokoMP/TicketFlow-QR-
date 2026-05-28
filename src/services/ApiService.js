@@ -4,12 +4,12 @@
 // Set DEMO_MODE = true para usar datos fake
 // Set DEMO_MODE = false (default) para WordPress real
 
-const DEMO_MODE = window.TICKET_FLOW_DEMO === 'true' || process.env.DEMO_MODE === 'true';
+const DEMO_MODE = window.TICKET_FLOW_DEMO === 'true' || (typeof process !== 'undefined' && process.env.DEMO_MODE === 'true');
 
 // Base API configuration
 const API_BASE_URL = DEMO_MODE 
   ? '/api/demo' 
-  : `${wpApiSettings?.root || '/wp-json/'}ticketflow/v1`.replace(/\/$/, '');
+  : `${typeof wpApiSettings !== 'undefined' ? wpApiSettings?.root : '/wp-json/'}ticketflow/v1`.replace(/\/$/, '');
 
 let currentNonce = window.ticketflowData?.nonce || '';
 
