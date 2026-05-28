@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Ticket Flow QR - Sistema de validación de entradas">
+    <title>Ticket Flow QR - Validación de Entradas</title>
+    
+    <!-- Estilos base -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background: #f5f5f5;
+        }
+        
+        #wprk-admin-app {
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Loading spinner */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-size: 18px;
+            color: #666;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Root element for React -->
+    <div id="wprk-admin-app">
+        <div class="loading">
+            <div class="spinner"></div>
+            <span>Cargando Ticket Flow QR...</span>
+        </div>
+    </div>
+
+    <!-- 
+        ==========================================
+        🔧 DEMO MODE CONFIG
+        ==========================================
+        Para activar DEMO MODE en Netlify:
+        - URL con query param: ?demo=true
+        - O setea en console: localStorage.setItem('TICKET_FLOW_DEMO', 'true')
+        - O en build: DEMO_MODE=true
+    -->
+    <script>
+        // Global config para debugging
+        window.TICKET_FLOW_CONFIG = {
+            version: '1.5.2',
+            mode: localStorage.getItem('TICKET_FLOW_DEMO') === 'true' ? '🎭 DEMO' : '🔗 PROD',
+            buildTime: new Date().toISOString()
+        };
+
+        console.log('%c🚀 Ticket Flow QR v1.5.2', 'font-size: 16px; color: #4CAF50; font-weight: bold');
+        console.log('Config:', window.TICKET_FLOW_CONFIG);
+        console.log('Tip: Abre console y ejecuta __getTicketFlowStatus() para ver estado');
+    </script>
+
+    <!-- Main app bundle (generado por webpack) -->
+    <script src="/dist/bundle.js"></script>
+</body>
+</html>

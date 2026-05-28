@@ -1,9 +1,41 @@
+// ==========================================
+// 🔧 DUAL MODE: WordPress + Demo
+// ==========================================
+// Set DEMO_MODE = true para usar datos fake
+// Set DEMO_MODE = false (default) para WordPress real
+
+const DEMO_MODE = window.TICKET_FLOW_DEMO === 'true' || process.env.DEMO_MODE === 'true';
+
 // Base API configuration
-//const API_BASE_URL = '/wordpress/wp-json/ticketflow/v1';
-// ✅ MEJOR (usa lo que WordPress genera)
-const API_BASE_URL = `${wpApiSettings?.root || '/wp-json/'}ticketflow/v1`.replace(/\/$/, '');
+const API_BASE_URL = DEMO_MODE 
+  ? '/api/demo' 
+  : `${wpApiSettings?.root || '/wp-json/'}ticketflow/v1`.replace(/\/$/, '');
 
 let currentNonce = window.ticketflowData?.nonce || '';
+
+// ==========================================
+// 📦 MOCK DATA para DEMO MODE
+// ==========================================
+const MOCK_EVENTS = [
+  { id: 'evt_001', nombre: 'Conferencia Tech 2025', fecha: '2025-05-30', estado: 'activo' },
+  { id: 'evt_002', nombre: 'Festival Música Santiago', fecha: '2025-06-15', estado: 'activo' }
+];
+
+const MOCK_TICKETS = {
+  'evt_001': [
+    { id: 'tkt_001', ticket_code: 'QR001', nombre: 'Juan Pérez', status: 'PENDING' },
+    { id: 'tkt_002', ticket_code: 'QR002', nombre: 'María García', status: 'PENDING' },
+    { id: 'tkt_003', ticket_code: 'QR003', nombre: 'Carlos López', status: 'PENDING' }
+  ],
+  'evt_002': [
+    { id: 'tkt_004', ticket_code: 'QR004', nombre: 'Ana Martínez', status: 'PENDING' },
+    { id: 'tkt_005', ticket_code: 'QR005', nombre: 'Roberto Sánchez', status: 'PENDING' }
+  ]
+};
+
+// Almacenamiento en memoria para demo
+let demoTicketStore = JSON.parse(JSON.stringify(MOCK_TICKETS));
+let demoScanCount = 0;
 
 // Helper para respuestas consistentes
 const buildResponse = (success, data = null, message = '') => ({
@@ -13,10 +45,103 @@ const buildResponse = (success, data = null, message = '') => ({
   timestamp: new Date().toISOString()
 });
 
+// ==========================================
+// 🎭 DEMO MOCK HANDLER
+// ==========================================
+const handleDemoRequest = async (endpoint, method = 'GET', body = null) => {
+  // Simular latencia de red realista
+  await new Promise(resolve => setTimeout(resolve, 200));
+
+  console.log(`[DEMO MODE] ${method} ${endpoint}`, body);
+
+  // Eventos activos
+  if (endpoint === '/eventos-activos' && method === 'GET') {
+    return buildResponse(true, MOCK_EVENTS, 'Eventos cargados (DEMO)');
+  }
+
+  // Sincronizar asistentes
+  const syncMatch = endpoint.match(/\/sync-attendees\/(.+)/);
+  if (syncMatch && method === 'GET') {
+    const eventId = syncMatch[1];
+    const attendees = demoTicketStore[eventId] || [];
+    return buildResponse(
+      true,
+      { attendees },
+      `Asistentes sincronizados: ${attendees.length} (DEMO)`
+    );
+  }
+
+  // Validar ticket (escanear QR)
+  const scanMatch = endpoint.match(/\/escanear\/(.+?)\/(.+)/);
+  if (scanMatch && method === 'GET') {
+    const [, eventId, qrCode] = scanMatch;
+    const tickets = demoTicketStore[eventId] || [];
+    const ticket = tickets.find(t => t.ticket_code === qrCode);
+
+    if (!ticket) {
+      return buildResponse(
+        false,
+        { valid: false, error: 'Ticket no encontrado' },
+        'QR inválido (DEMO)'
+      );
+    }
+
+    if (ticket.status === 'SCANNED') {
+      return buildResponse(
+        false,
+        { valid: false, error: 'Ticket ya escaneado', duplicate: true },
+        'Ticket duplicado (DEMO)'
+      );
+    }
+
+    demoScanCount++;
+    ticket.status = 'SCANNED';
+
+    return buildResponse(
+      true,
+      {
+        valid: true,
+        id: ticket.id,
+        nombre: ticket.nombre,
+        ticket_code: ticket.ticket_code,
+        status: 'SCANNED'
+      },
+      `Ticket válido: ${ticket.nombre} (DEMO)`
+    );
+  }
+
+  // Marcar como escaneado
+  const markMatch = endpoint.match(/\/mark-as-scanned\/(.+)/);
+  if (markMatch && method === 'POST') {
+    const ticketId = markMatch[1];
+    // En demo, aceptar siempre
+    return buildResponse(true, { id: ticketId }, 'Ticket marcado (DEMO)');
+  }
+
+  // Bulk mark scanned
+  if (endpoint === '/bulk-mark-scanned' && method === 'POST') {
+    const { ids = [] } = body || {};
+    return buildResponse(
+      true,
+      { updated: ids.length },
+      `${ids.length} tickets actualizados (DEMO)`
+    );
+  }
+
+  // Fallback
+  return buildResponse(false, null, 'Endpoint no encontrado en DEMO mode');
+};
+
 /**
- * Secure fetch wrapper mejorado
+ * Secure fetch wrapper mejorado (dual mode)
  */
 export const secureFetch = async (endpoint, method = 'GET', body = null) => {
+  // Si estamos en DEMO mode, usar mock
+  if (DEMO_MODE) {
+    return handleDemoRequest(endpoint, method, body);
+  }
+
+  // Modo WordPress real
   const headers = {
     'Content-Type': 'application/json',
     'X-WP-Nonce': currentNonce,
@@ -55,6 +180,23 @@ export const secureFetch = async (endpoint, method = 'GET', body = null) => {
     return buildResponse(false, null, error.message);
   }
 };
+
+// ==========================================
+// 📊 HELPER: Status actual del sistema
+// ==========================================
+window.__getTicketFlowStatus = () => {
+  return {
+    mode: DEMO_MODE ? '🎭 DEMO' : '🔗 WORDPRESS',
+    scanCount: demoScanCount,
+    events: MOCK_EVENTS.length,
+    timestamp: new Date().toISOString()
+  };
+};
+
+console.log(
+  `%c✨ Ticket Flow iniciado en modo ${DEMO_MODE ? '🎭 DEMO' : '🔗 WORDPRESS'}`,
+  'color: #4CAF50; font-weight: bold'
+);
 
 /**
  * Implementación mejorada del ScannerAPI

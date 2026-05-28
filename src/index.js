@@ -8,6 +8,39 @@ import { HashRouter } from 'react-router-dom';
 import { ErrorBoundary } from './util/errorBoundaries';
 import { ToastContainer } from 'react-toastify';
 
+// ==========================================
+// 🎭 DEMO MODE CONFIGURATION
+// ==========================================
+// Detectar DEMO_MODE desde:
+// 1. Variable de entorno (process.env.DEMO_MODE)
+// 2. Query param (?demo=true)
+// 3. LocalStorage (localStorage.getItem('TICKET_FLOW_DEMO'))
+// ==========================================
+const initDemoMode = () => {
+  const queryParams = new URLSearchParams(window.location.search);
+  const isDemoQuery = queryParams.get('demo') === 'true';
+  const isDemoStorage = localStorage.getItem('TICKET_FLOW_DEMO') === 'true';
+  const isDemoEnv = process.env.DEMO_MODE === 'true';
+
+  const demoMode = isDemoQuery || isDemoStorage || isDemoEnv;
+  
+  if (demoMode) {
+    window.TICKET_FLOW_DEMO = 'true';
+    localStorage.setItem('TICKET_FLOW_DEMO', 'true');
+    console.log('%c✨ DEMO MODE ACTIVATED', 'color: #FF9800; font-weight: bold; font-size: 14px');
+    console.log('Para desactivar: localStorage.removeItem("TICKET_FLOW_DEMO") y recargar');
+  } else {
+    window.TICKET_FLOW_DEMO = 'false';
+    console.log('%c🔗 PRODUCTION MODE (WordPress)', 'color: #4CAF50; font-weight: bold; font-size: 14px');
+    console.log('Para activar demo: agregar ?demo=true a URL o localStorage.setItem("TICKET_FLOW_DEMO", "true")');
+  }
+
+  return demoMode;
+};
+
+// Inicializar DEMO_MODE antes de cargar la app
+initDemoMode();
+
 document.addEventListener('DOMContentLoaded', function () {
     const element = document.getElementById('wprk-admin-app');
 
