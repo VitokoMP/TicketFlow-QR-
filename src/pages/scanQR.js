@@ -5,7 +5,7 @@ import { ScannerAPI } from "../services/ApiService";
 import checkImg from '../public/img/check.png';
 import crossImg from '../public/img/cross.png';
 import warningImg from '../public/img/warning.png';
-import '../public/css/ScanQR.css';
+import '../public/css/ScanQr.css';
 
 const OPTIMAL_SCAN_DELAY = 200;
 const API_TIMEOUT = 1000;
