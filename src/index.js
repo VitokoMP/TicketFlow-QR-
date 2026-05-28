@@ -41,6 +41,14 @@ const initDemoMode = () => {
 // Inicializar DEMO_MODE antes de cargar la app
 initDemoMode();
 
+// Inicializar variables globales de WordPress si no existen
+if (typeof window.ticketflowData === 'undefined') {
+  window.ticketflowData = { nonce: '' };
+}
+if (typeof window.wpApiSettings === 'undefined') {
+  window.wpApiSettings = { root: '/wp-json/' };
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     const element = document.getElementById('wprk-admin-app');
 

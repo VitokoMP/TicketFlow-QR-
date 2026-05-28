@@ -317,7 +317,34 @@ const validarTicket = useCallback(async (eventId, ticketCode) => {
   } catch (error) {
     if (isActive) {
       console.error('[Eventos] Error:', error);
+      
+   
+    // ✅ EN DEMO MODE: cargar eventos fake
+    if (window.TICKET_FLOW_DEMO === 'true') {
+      console.log('🎭 DEMO MODE: Cargando eventos fake...');
+      const demoEvents = [
+        { event_id: 'evt_001', nombre: 'Conferencia Tech 2025', event_start_date: new Date().toISOString(), event_end_date: new Date().toISOString() },
+        { event_id: 'evt_002', nombre: 'Festival Música Santiago', event_start_date: new Date().toISOString(), event_end_date: new Date().toISOString() }
+      ];
+      setEventos(demoEvents);
+      
+      const demoAsistentes = [
+        { id: 'tkt_001', ticket_code: 'QR001', nombre: 'Juan Pérez', status: 'PENDING' },
+        { id: 'tkt_002', ticket_code: 'QR002', nombre: 'María García', status: 'PENDING' },
+        { id: 'tkt_003', ticket_code: 'QR003', nombre: 'Carlos López', status: 'PENDING' }
+      ];
+      
+      setEventoSeleccionado({
+        ...demoEvents[0],
+        asistentes: demoAsistentes
+      });
+      setAsistentes({ 'evt_001': demoAsistentes });
+      setAsistentesCargados(true);
+    } else {
       toast.error('Error al cargar eventos');
+    }
+  
+
     }
   } finally {
     if (isActive) setLoading(false);
