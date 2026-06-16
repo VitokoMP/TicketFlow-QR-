@@ -40,7 +40,18 @@ export const EventoProvider = ({ children }) => {
   // Montaje / Desmontaje
   // -----------------------
   useEffect(() => {
-    localStorage.removeItem('ticketflow_asistentes');
+    // Restaurar asistentes desde localStorage en lugar de borrar
+    const savedAsistentes = localStorage.getItem('ticketflow_asistentes');
+    if (savedAsistentes) {
+      try {
+        setAsistentes(JSON.parse(savedAsistentes));
+        console.log('[EventoContext] Asistentes restaurados desde localStorage');
+      } catch (error) {
+        console.warn('[EventoContext] Error restaurando asistentes:', error);
+        localStorage.removeItem('ticketflow_asistentes');
+      }
+    }
+
     const savedBuffer = localStorage.getItem('ticketflow_pending_scans');
     if (savedBuffer) syncBufferRef.current = JSON.parse(savedBuffer);
 
