@@ -26,6 +26,53 @@ export const EventoProvider = ({ children }) => {
   const retryCountRef = useRef(0);
 
   // -----------------------
+  // 🧠 ÁRBITRO DE ESTADO ÚNICO
+  // -----------------------
+  const applyAsistenteUpdate = useCallback((eventId, update) => {
+    setAsistentes(prev => {
+      const current = prev[eventId] || [];
+      const idx = current.findIndex(a => String(a.id) === String(update.id));
+
+      let updated;
+
+      if (idx !== -1) {
+        const existing = current[idx];
+        
+        // 🔥 Regla única: SCANNED es monótono
+        const newStatus = existing.status === 'SCANNED' 
+          ? 'SCANNED'  // Preservar SCANNED
+          : update.status || existing.status || 'PENDING';
+
+        const merged = {
+          ...existing,
+          ...update,
+          status: newStatus,
+          updatedAt: Date.now()
+        };
+
+        updated = [...current];
+        updated[idx] = merged;
+        
+        console.log(`[applyAsistenteUpdate] ${update.id}: ${existing.status} → ${merged.status}`);
+      } else {
+        updated = [...current, { 
+          ...update, 
+          status: update.status || 'PENDING',
+          updatedAt: Date.now() 
+        }];
+      }
+
+      return {
+        ...prev,
+        [eventId]: updated
+      };
+    });
+
+    // ✅ Ya NO actualizamos eventoSeleccionado.asistentes
+    // La UI lee directamente de asistentes[eventId]
+  }, []);
+
+  // -----------------------
   // Debugs de estado
   // -----------------------
   useEffect(() => {
@@ -40,7 +87,17 @@ export const EventoProvider = ({ children }) => {
   // Montaje / Desmontaje
   // -----------------------
   useEffect(() => {
-    localStorage.removeItem('ticketflow_asistentes');
+    const savedAsistentes = localStorage.getItem('ticketflow_asistentes');
+    if (savedAsistentes) {
+      try {
+        setAsistentes(JSON.parse(savedAsistentes));
+        console.log('[EventoContext] Asistentes restaurados desde localStorage');
+      } catch (error) {
+        console.warn('[EventoContext] Error restaurando asistentes:', error);
+        localStorage.removeItem('ticketflow_asistentes');
+      }
+    }
+
     const savedBuffer = localStorage.getItem('ticketflow_pending_scans');
     if (savedBuffer) syncBufferRef.current = JSON.parse(savedBuffer);
 
@@ -65,57 +122,22 @@ export const EventoProvider = ({ children }) => {
     localStorage.setItem('ticketflow_asistentes', JSON.stringify(asistentes));
   }, [asistentes]);
 
-  useEffect(() => {
-    localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
-  }, [syncBufferRef.current.length]);
-
   // -----------------------
   // Funciones memoizadas
   // -----------------------
   const updateAsistenteStatus = useCallback((asistenteId, newStatus, fullData = null) => {
     if (!eventoSeleccionado) return false;
 
-    const normalizedId = String(asistenteId);
     const eventId = eventoSeleccionado.event_id;
-
-    console.log(`🔍 [DEBUG] Actualizando estado asistente ${normalizedId} a ${newStatus}`);
-
-    setAsistentes(prev => {
-      const current = prev[eventId] || [];
-      const idx = current.findIndex(a => String(a.id) === normalizedId);
-      
-      const updated = [...current];
-      if (idx !== -1) {
-        updated[idx] = { ...updated[idx], status: newStatus, ...(fullData || {}) };
-        console.log(`[DEBUG] Actualizando asistente ${normalizedId}:`, updated[idx]);
-
-      } else if (fullData) {
-        updated.push({ ...fullData, status: newStatus, id: normalizedId });
-      }
-
-      return { ...prev, [eventId]: updated };
-    });
-
-    setEventoSeleccionado(prev => {
-      if (!prev) return prev;
-      const currentAsistentes = prev.asistentes || [];
-      const idx = currentAsistentes.findIndex(a => String(a.id) === normalizedId);
-
-      let updatedAsistentes;
-      if (idx !== -1) {
-        updatedAsistentes = [...currentAsistentes];
-        updatedAsistentes[idx] = { ...updatedAsistentes[idx], status: newStatus, ...(fullData || {}) };
-      } else if (fullData) {
-        updatedAsistentes = [...currentAsistentes, { ...fullData, status: newStatus }];
-      } else {
-        return prev;
-      }
-
-      return { ...prev, asistentes: updatedAsistentes };
+    
+    applyAsistenteUpdate(eventId, {
+      id: asistenteId,
+      status: newStatus,
+      ...(fullData || {})
     });
 
     return true;
-  }, [eventoSeleccionado]);
+  }, [eventoSeleccionado, applyAsistenteUpdate]);
 
   const loadAsistentes = useCallback(async (eventId) => {
     const normalizedEventId = String(eventId);
@@ -127,21 +149,19 @@ export const EventoProvider = ({ children }) => {
         const asistentesNormalizados = result.data.map(a => ({
           ...a,
           id: String(a.id),
-          status: a.status.toUpperCase() // SCANNED o PENDING
+          status: (a.status || 'PENDING').toUpperCase()
         }));
 
         console.log(`🔍 [DEBUG] Asistentes cargados desde API:`, asistentesNormalizados);
-        
-        setAsistentes(prev => ({
-          ...prev,
-          [normalizedEventId]: asistentesNormalizados
-        }));
 
-        if (eventoSeleccionado && eventoSeleccionado.event_id === normalizedEventId) {
-          setEventoSeleccionado(prev => ({
-            ...prev,
-            asistentes: asistentesNormalizados
-          }));
+        // ✅ Usar el árbitro para cada asistente
+        if (asistentesNormalizados.length > 0) {
+          asistentesNormalizados.forEach(a => {
+            applyAsistenteUpdate(normalizedEventId, a);
+          });
+        } else {
+          // Servidor vacío → conservar locales (el árbitro ya lo hace)
+          console.warn('[loadAsistentes] Servidor devolvió vacío, conservando datos locales');
         }
         
         return asistentesNormalizados;
@@ -151,15 +171,13 @@ export const EventoProvider = ({ children }) => {
       console.error('[Asistentes] Error:', error);
       return null;
     }
-  }, [eventoSeleccionado]);
+  }, [applyAsistenteUpdate]);
 
   const addToBuffer = useCallback((scanData) => {
     syncBufferRef.current.push(scanData);
     localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
-    //if (isOnline) syncBuffer();
     console.log(`[Buffer] Agregado. Total: ${syncBufferRef.current.length}`);
-
-  }, [isOnline]);
+  }, []);
 
   const syncBuffer = useCallback(async () => {
     if (!isOnline || syncBufferRef.current.length === 0) return;
@@ -173,6 +191,16 @@ export const EventoProvider = ({ children }) => {
       const response = await ScannerAPI.markMultipleAsScanned(ticketIds);
 
       if (response.success) {
+        // Actualizar estado local con confirmación del servidor
+        ticketIds.forEach(id => {
+          applyAsistenteUpdate(eventoSeleccionado?.event_id, {
+            id: id,
+            status: 'SCANNED',
+            synced: true,
+            syncedAt: Date.now()
+          });
+        });
+
         syncBufferRef.current = [];
         localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
         console.log(`[SyncBuffer] ${ticketIds.length} escaneos sincronizados`);
@@ -182,78 +210,74 @@ export const EventoProvider = ({ children }) => {
     } catch (error) {
       console.error('[SyncBuffer] Error sincronizando buffer', error);
     }
-  }, [isOnline]);
+  }, [isOnline, eventoSeleccionado, applyAsistenteUpdate]);
 
-const validarTicket = useCallback(async (eventId, ticketCode) => {
-  try {
-    const normalizedEventId = String(eventId);
-    const normalizedTicketCode = String(ticketCode).toLowerCase().trim();
+  const validarTicket = useCallback(async (eventId, ticketCode) => {
+    try {
+      const normalizedEventId = String(eventId);
+      const normalizedTicketCode = String(ticketCode).toLowerCase().trim();
 
-    console.log(`🔍 [DEBUG] Validando ticket: ${normalizedTicketCode} para evento: ${normalizedEventId}`);
+      console.log(`🔍 [DEBUG] Validando ticket: ${normalizedTicketCode} para evento: ${normalizedEventId}`);
 
-    const asistenteFromSelected = eventoSeleccionado?.asistentes?.find(a => 
-      String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
-      String(a.id).toLowerCase() === normalizedTicketCode
-    );
+      // ✅ Única fuente de verdad: asistentes[eventId]
+      const asistente = asistentes[eventId]?.find(a => 
+        String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
+        String(a.id).toLowerCase() === normalizedTicketCode
+      );
 
-    const asistenteFromGlobal = asistentes[eventId]?.find(a => 
-      String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
-      String(a.id).toLowerCase() === normalizedTicketCode
-    );
+      if (asistente) {
+        console.log(`🔍 [DEBUG] Asistente encontrado:`, asistente);
+        
+        if (asistente.status === 'SCANNED') {
+          console.log(`🔍 [DEBUG] Ticket ya validado anteriormente`);
+          return { 
+            success: false, 
+            type: 'ya-validado', 
+            message: `Ticket ya validado: ${asistente.nombre}`,
+            asistente 
+          };
+        }
 
-    const asistente = asistenteFromSelected || asistenteFromGlobal;
+        console.log(`🔍 [DEBUG] Marcando como SCANNED...`);
+        
+        // ✅ Usar el árbitro
+        applyAsistenteUpdate(normalizedEventId, {
+          id: asistente.id,
+          status: 'SCANNED'
+        });
+        
+        syncBufferRef.current.push({ 
+          ticket_id: String(asistente.id), 
+          event_id: normalizedEventId, 
+          status: 'SCANNED', 
+          source: 'local' 
+        });
+        localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
 
-    // ✅ CASO 1: Ticket encontrado en caché
-    if (asistente) {
-      console.log(`🔍 [DEBUG] Asistente encontrado:`, asistente);
-      
-      if (asistente.status === 'SCANNED') {
-        console.log(`🔍 [DEBUG] Ticket ya validado anteriormente`);
         return { 
-          success: false, 
-          type: 'ya-validado', 
-          message: `Ticket ya validado: ${asistente.nombre}`,
+          success: true, 
+          type: 'valid', 
+          message: `Validado: ${asistente.nombre}`,
           asistente 
         };
       }
 
-      console.log(`🔍 [DEBUG] Marcando como SCANNED...`);
-      updateAsistenteStatus(asistente.id, 'SCANNED');
-      
-      // ✅ Usar push directo, no addToBuffer
-      syncBufferRef.current.push({ 
-        ticket_id: String(asistente.id), 
-        event_id: normalizedEventId, 
-        status: 'SCANNED', 
-        source: 'local' 
-      });
-      localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
-
+      console.log(`🔍 [DEBUG] Ticket NO encontrado en caché`);
       return { 
-        success: true, 
-        type: 'valid', 
-        message: `Validado: ${asistente.nombre}`,
-        asistente 
+        success: false, 
+        type: 'invalid', 
+        message: 'Ticket no válido para este evento. Sincroniza los asistentes si crees que debería estar.'
+      };
+
+    } catch (error) {
+      console.error('[Validación] Error:', error);
+      return { 
+        success: false, 
+        type: 'error', 
+        message: error.message || 'Error inesperado' 
       };
     }
-
-    // ✅ CASO 2: Ticket NO encontrado → INVÁLIDO (SIN BACKEND)
-    console.log(`🔍 [DEBUG] Ticket NO encontrado en caché`);
-    return { 
-      success: false, 
-      type: 'invalid', 
-      message: 'Ticket no válido para este evento. Sincroniza los asistentes si crees que debería estar.'
-    };
-
-  } catch (error) {
-    console.error('[Validación] Error:', error);
-    return { 
-      success: false, 
-      type: 'error', 
-      message: error.message || 'Error inesperado' 
-    };
-  }
-}, [eventoSeleccionado, asistentes, updateAsistenteStatus]);
+  }, [asistentes, applyAsistenteUpdate]);
 
   // -----------------------
   // Cargar eventos al inicio
@@ -262,75 +286,94 @@ const validarTicket = useCallback(async (eventId, ticketCode) => {
     let isActive = true;
 
     const loadInitialData = async () => {
-  try {
-    setLoading(true);
-    console.log('🔍 [DEBUG] Iniciando carga inicial de datos...');
+      try {
+        setLoading(true);
+        console.log('🔍 [DEBUG] Iniciando carga inicial de datos...');
 
-    const { success, data: events } = await ScannerAPI.getActiveEvents();
-    if (!isActive) return;
+        const { success, data: events } = await ScannerAPI.getActiveEvents();
+        if (!isActive) return;
 
-    if (success && events.length > 0) {
-      setEventos(events);
+        if (success && events.length > 0) {
+          setEventos(events);
 
-      // Solo una vez, para comparar fechas sin horas
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-      const todayEvent = events.find(e => {
-        const start = new Date(e.event_start_date);
-        const end = new Date(e.event_end_date);
-
-        start.setHours(0, 0, 0, 0);
-        end.setHours(0, 0, 0, 0);
-
-        return today >= start && today <= end;
-      });
-
-      if (todayEvent) {
-        console.log(`🔍 [DEBUG] Evento encontrado para hoy:`, todayEvent);
-
-        const loadedAsistentes = await loadAsistentes(todayEvent.event_id);
-
-        if (isActive && loadedAsistentes) {
-          console.log('🔍 [DEBUG] Configurando estado final...');
-
-          setEventoSeleccionado({
-            ...todayEvent,
-            asistentes: loadedAsistentes
+          const todayEvent = events.find(e => {
+            const start = new Date(e.event_start_date);
+            const end = new Date(e.event_end_date);
+            start.setHours(0, 0, 0, 0);
+            end.setHours(0, 0, 0, 0);
+            return today >= start && today <= end;
           });
 
-          setAsistentesCargados(true);
-          console.log('🔍 [DEBUG] Carga inicial completada exitosamente');
-        }
-      } else {
-        if (isActive) {
+          if (todayEvent) {
+            console.log(`🔍 [DEBUG] Evento encontrado para hoy:`, todayEvent);
+
+            const loadedAsistentes = await loadAsistentes(todayEvent.event_id);
+
+            if (isActive) {
+              console.log('🔍 [DEBUG] Configurando estado final...');
+
+              // ✅ Solo el evento, sin asistentes
+              setEventoSeleccionado(todayEvent);
+
+              // Si hay asistentes, ya se cargaron vía applyAsistenteUpdate
+              // en loadAsistentes, pero si no hay, conservamos locales
+              
+              setAsistentesCargados(true);
+              console.log('🔍 [DEBUG] Carga inicial completada exitosamente');
+            }
+          } else {
+            if (isActive) {
+              setEventoSeleccionado(null);
+              setAsistentesCargados(false);
+              toast.info('No hay eventos activos para hoy. El escáner está deshabilitado.');
+            }
+          }
+        } else {
+          toast.info('No hay eventos activos en la plataforma.');
           setEventoSeleccionado(null);
           setAsistentesCargados(false);
-          toast.info('No hay eventos activos para hoy. El escáner está deshabilitado.');
         }
+      } catch (error) {
+        if (isActive) {
+          console.error('[Eventos] Error:', error);
+          
+          if (window.TICKET_FLOW_DEMO === 'true') {
+            console.log('🎭 DEMO MODE: Cargando eventos fake...');
+            const demoEvents = [
+              { event_id: 'evt_001', nombre: 'Conferencia Tech 2025', event_start_date: new Date().toISOString(), event_end_date: new Date().toISOString() },
+              { event_id: 'evt_002', nombre: 'Festival Música Santiago', event_start_date: new Date().toISOString(), event_end_date: new Date().toISOString() }
+            ];
+            setEventos(demoEvents);
+            
+            const demoAsistentes = [
+              { id: 'tkt_001', ticket_code: 'QR001', nombre: 'Juan Pérez', status: 'PENDING' },
+              { id: 'tkt_002', ticket_code: 'QR002', nombre: 'María García', status: 'PENDING' },
+              { id: 'tkt_003', ticket_code: 'QR003', nombre: 'Carlos López', status: 'PENDING' }
+            ];
+            
+            // ✅ Cargar asistentes vía árbitro
+            demoAsistentes.forEach(a => {
+              applyAsistenteUpdate('evt_001', a);
+            });
+            
+            setEventoSeleccionado(demoEvents[0]);
+            setAsistentesCargados(true);
+          } else {
+            toast.error('Error al cargar eventos');
+          }
+        }
+      } finally {
+        if (isActive) setLoading(false);
       }
-    } else {
-      toast.info('No hay eventos activos en la plataforma.');
-      setEventoSeleccionado(null);
-      setAsistentesCargados(false);
-    }
-  } catch (error) {
-    if (isActive) {
-      console.error('[Eventos] Error:', error);
-      toast.error('Error al cargar eventos');
-    }
-  } finally {
-    if (isActive) setLoading(false);
-  }
-};
+    };
 
     loadInitialData();
     return () => { isActive = false; };
-  }, [loadAsistentes]);
+  }, [loadAsistentes, applyAsistenteUpdate]);
 
-  // -----------------------
-  // Memoizar value del Provider
-  // -----------------------
   const contextValue = useMemo(() => ({
     eventos,
     asistentes,
@@ -342,6 +385,7 @@ const validarTicket = useCallback(async (eventId, ticketCode) => {
     updateAsistenteStatus,
     addToBuffer,
     syncBuffer,
+    applyAsistenteUpdate,
     setEventos,
     setEventoSeleccionado,
     setLoading,
@@ -356,7 +400,8 @@ const validarTicket = useCallback(async (eventId, ticketCode) => {
     validarTicket,
     updateAsistenteStatus,
     addToBuffer,
-    syncBuffer
+    syncBuffer,
+    applyAsistenteUpdate
   ]);
 
   return (
