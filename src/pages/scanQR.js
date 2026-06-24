@@ -915,6 +915,34 @@ const handleSync = useCallback(async () => {
           ))}
         </select>
 
+        {asistentesDelEvento.length > 0 && (
+       <div className="scan-counter-bar">
+  <div>
+    <div className="scan-counter-label">
+      Tickets Validados
+    </div>
+
+    <div className="scan-counter-value">
+      {scannedCount}
+      <span className="scan-counter-total">
+        {" "} / {asistentesDelEvento.length}
+      </span>
+    </div>
+  </div>
+
+  <div className="sync-status">
+    <span
+      className={`sync-status-dot ${
+        !navigator.onLine ? 'is-offline' : ''
+      }`}
+    />
+    {navigator.onLine ? 'Online' : 'Offline'}
+  </div>
+</div>
+
+        )}
+
+
         <div className="scanner-wrapper">
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
         </div>
@@ -942,7 +970,8 @@ const handleSync = useCallback(async () => {
             onClick={() => window.__downloadDiagLogs?.()}
             style={{ backgroundColor: '#666', color: '#fff' }}
           >
-            📥 Descargar Logs de Diagnóstico
+            📥 descargar log  de bugs
+
           </button>
         </div>
       </div>

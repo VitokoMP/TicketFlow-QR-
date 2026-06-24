@@ -5,17 +5,15 @@ import './NavBar.css';
 const NavBar = () => {
   return (
     <>
-      <header className="header">
-        <div className="logo">🎟️ TicketFlow</div>
-
+          {/*      <header className="header">
         <div className="user-settings">
-          <span>👤 Usuario</span>
-          {/* En futuro: <button onClick={logout}>Cerrar sesión</button> */}
-        </div>
+<span>👤 Usuario</span>*/}
+          {/* En futuro: <button onClick={logout}>Cerrar sesión</button>        </div>
       </header>
-
-      <nav className="nav">
-       {/* <NavLink 
+*/}
+ 
+      
+       {/*<nav className="nav"> <NavLink 
           to="/" 
           className={({ isActive }) => (isActive ? "nav-link active-link" : "nav-link")}
         >
@@ -29,13 +27,13 @@ const NavBar = () => {
           Sincronizar Ventas
         </NavLink>*/}
 
-         <NavLink 
+{/*         <NavLink 
           to="/" 
           className={({ isActive }) => (isActive ? "nav-link active-link" : "nav-link")}
         >
           Escanear QR
-        </NavLink> 
-      </nav>
+        </NavLink> </nav>*/}
+      
     </>
   );
 };
