@@ -104,6 +104,9 @@ export default function ScanQR() {
     pendingTickets: []
   });
 
+  // ✅ NUEVO: Estado para el filtro "Mostrar solo hoy"
+  const [mostrarSoloHoy, setMostrarSoloHoy] = useState(true);
+
   console.log('[ScanQR] Estado inicial:', scanState);
 
   // Refs
@@ -132,6 +135,29 @@ export default function ScanQR() {
     if (!eventoSeleccionado?.event_id) return [];
     return asistentes[eventoSeleccionado.event_id] || [];
   }, [eventoSeleccionado, asistentes]);
+
+  // ✅ NUEVO: Función segura para comparar fechas (evita problemas de timezone)
+  const isSameDay = useCallback((dateStr) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  }, []);
+
+  // ✅ NUEVO: Asistentes filtrados por día (solo para UI)
+  const asistentesMostrados = useMemo(() => {
+    if (!mostrarSoloHoy) return asistentesDelEvento;
+    return asistentesDelEvento.filter(a => isSameDay(a.event_date));
+  }, [asistentesDelEvento, mostrarSoloHoy, isSameDay]);
+
+  // ✅ NUEVO: Contador de SCANNED (la "verdad UI")
+  const scannedCount = useMemo(() => {
+    return asistentesMostrados.filter(a => a.status === "SCANNED").length;
+  }, [asistentesMostrados]);
 
   // ======================================
   // FUNCIONES ORIGINALES
@@ -893,6 +919,40 @@ const handleSync = useCallback(async () => {
             </option>
           ))}
         </select>
+
+        {/* ✅ NUEVO: Toolbar con filtro y contador */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '15px', 
+          padding: '10px 15px',
+          backgroundColor: '#f5f5f5',
+          borderRadius: '8px',
+          margin: '10px 0'
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+            <input
+              type="checkbox"
+              checked={mostrarSoloHoy}
+              onChange={(e) => setMostrarSoloHoy(e.target.checked)}
+              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+            />
+            <span>Mostrar solo hoy</span>
+          </label>
+          
+          <span style={{ 
+            marginLeft: 'auto', 
+            fontWeight: 'bold', 
+            fontSize: '16px',
+            color: '#4CAF50',
+            backgroundColor: 'white',
+            padding: '4px 12px',
+            borderRadius: '20px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+          }}>
+            ✅ {scannedCount}/{asistentesMostrados.length}
+          </span>
+        </div>
 
         <div className="scanner-wrapper">
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
