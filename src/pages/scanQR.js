@@ -591,7 +591,8 @@ export default function ScanQR() {
     }, 300);
   }, [resetScannerState, restartScanner]);
 
-const handleSync = useCallback(async () => {
+  // ✅ FIX #3: syncBuffer ahora SOLO limpia el buffer, NO toca UI
+  const handleSync = useCallback(async () => {
     console.log('[handleSync] Iniciando sincronización manual');
 
     // 🔒 COOLDOWN: Evita múltiples sincronizaciones en 20 segundos
@@ -626,6 +627,7 @@ const handleSync = useCallback(async () => {
         if (success) {
             console.log('[handleSync] Actualizando estado local para evento', eventId);
 
+            // ✅ FIX: Escritura directa con setAsistentes, sin applyAsistenteUpdate
             setAsistentes(prev => {
                 const prevState = prev || {};
                 return {
@@ -663,12 +665,15 @@ const handleSync = useCallback(async () => {
             });
         }
     }
-}, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
+  }, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
 
+  // ✅ FIX #5: handleEventoChange con setTimeout para evitar race con scanner
   const handleEventoChange = useCallback((selectedEvent) => {
     console.log('[handleEventoChange] Cambiando evento:', selectedEvent.event_id);
     setEventoSeleccionado(selectedEvent);
-    loadAsistentes(selectedEvent.event_id);
+    setTimeout(() => {
+      loadAsistentes(selectedEvent.event_id);
+    }, 0);
     resetScannerState();
   }, [setEventoSeleccionado, loadAsistentes, resetScannerState]);
 
@@ -970,8 +975,7 @@ const handleSync = useCallback(async () => {
             onClick={() => window.__downloadDiagLogs?.()}
             style={{ backgroundColor: '#666', color: '#fff' }}
           >
-            📥 descargar log  de bugs
-
+            📥 descargar log de bugs
           </button>
         </div>
       </div>

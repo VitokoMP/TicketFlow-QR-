@@ -632,6 +632,7 @@ class TicketFlow_REST_API {
                             LEFT JOIN {$wpdb->prefix}postmeta ea 
                                 ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
                             WHERE a.post_type = 'mep_events_attendees'
+                            AND a.post_status = 'publish'
                             AND ea.meta_value = %d
                         ", $event_id, $event_id));
 
