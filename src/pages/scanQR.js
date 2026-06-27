@@ -919,41 +919,18 @@ const handleSync = useCallback(async () => {
             </option>
           ))}
         </select>
+<label className="switch">
+  <input
+    type="checkbox"
+    checked={mostrarSoloHoy}
+    onChange={(e) => setMostrarSoloHoy(e.target.checked)}
+  />
+  <span className="slider" />
+</label>
 
-        {/* ✅ NUEVO: Toolbar con filtro y contador */}
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '15px', 
-          padding: '10px 15px',
-          backgroundColor: '#f5f5f5',
-          borderRadius: '8px',
-          margin: '10px 0'
-        }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
-            <input
-              type="checkbox"
-              checked={mostrarSoloHoy}
-              onChange={(e) => setMostrarSoloHoy(e.target.checked)}
-              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-            />
-            <span>Mostrar solo hoy</span>
-          </label>
-          
-          <span style={{ 
-            marginLeft: 'auto', 
-            fontWeight: 'bold', 
-            fontSize: '16px',
-            color: '#4CAF50',
-            backgroundColor: 'white',
-            padding: '4px 12px',
-            borderRadius: '20px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-          }}>
-            ✅ {scannedCount}/{asistentesMostrados.length}
-          </span>
-        </div>
-
+<span className="switch-label">
+  Solo hoy
+</span>
         <div className="scanner-wrapper">
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
         </div>
