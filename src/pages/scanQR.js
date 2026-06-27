@@ -14,10 +14,6 @@ const ERROR_DISPLAY_TIME = 1000;
 const STOP_RETRY_MAX = 8;
 const STOP_RETRY_BASE_MS = 120;
 const MAX_BACKOFF_MS = 10000;
-const totalCount = asistentesDelEvento.length;
-const scannedCount = useMemo(() => {
-  return asistentesDelEvento.filter(a => a.status === "SCANNED").length;
-}, [asistentesDelEvento]);
 // ==========================================
 // 🔍 DIAGNÓSTICO: Buffer circular en memoria
 // ==========================================
@@ -139,6 +135,24 @@ export default function ScanQR() {
     return asistentes[eventoSeleccionado.event_id] || [];
   }, [eventoSeleccionado, asistentes]);
 
+  const totalCount = useMemo(() => {
+    return asistentesDelEvento.length;
+  }, [asistentesDelEvento]);
+
+  const scannedCount = useMemo(() => {
+    return asistentesDelEvento.filter(a => a.status === "SCANNED").length;
+  }, [asistentesDelEvento]);
+
+  const eventosMostrados = useMemo(() => {
+  if (!mostrarSoloHoy) return eventos;
+
+  const now = new Date();
+
+  return eventos.filter(ev => {
+    const d = new Date(ev.event_date); // ajusta el campo real
+    return d.toDateString() === now.toDateString();
+  });
+}, [eventos, mostrarSoloHoy]);
   // ✅ NUEVO: Función segura para comparar fechas (evita problemas de timezone)
   const isSameDay = useCallback((dateStr) => {
     if (!dateStr) return false;
@@ -916,7 +930,8 @@ const handleSync = useCallback(async () => {
           }}
         >
           <option value="" disabled>Seleccione un evento</option>
-          {eventos.map(evt => (
+          
+          {eventosMostrados.map(evt => (
             <option key={evt.event_id} value={evt.event_id}>
               {evt.event_title} ({evt.event_id})
             </option>
@@ -934,10 +949,6 @@ const handleSync = useCallback(async () => {
 <span className="switch-label">
   Solo hoy
 </span>
-
-<div className="scan-counter">
-  {scannedCount} / {totalCount}
-</div>
         <div className="scanner-wrapper">
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
         </div>
