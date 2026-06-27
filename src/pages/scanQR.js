@@ -14,6 +14,7 @@ const ERROR_DISPLAY_TIME = 1000;
 const STOP_RETRY_MAX = 8;
 const STOP_RETRY_BASE_MS = 120;
 const MAX_BACKOFF_MS = 10000;
+
 // ==========================================
 // 🔍 DIAGNÓSTICO: Buffer circular en memoria
 // ==========================================
@@ -144,15 +145,16 @@ export default function ScanQR() {
   }, [asistentesDelEvento]);
 
   const eventosMostrados = useMemo(() => {
-  if (!mostrarSoloHoy) return eventos;
+    if (!mostrarSoloHoy) return eventos;
 
-  const now = new Date();
+    const now = new Date();
 
-  return eventos.filter(ev => {
-    const d = new Date(ev.event_date); // ajusta el campo real
-    return d.toDateString() === now.toDateString();
-  });
-}, [eventos, mostrarSoloHoy]);
+    return eventos.filter(ev => {
+      const d = new Date(ev.event_date);
+      return d.toDateString() === now.toDateString();
+    });
+  }, [eventos, mostrarSoloHoy]);
+
   // ✅ NUEVO: Función segura para comparar fechas (evita problemas de timezone)
   const isSameDay = useCallback((dateStr) => {
     if (!dateStr) return false;
@@ -165,16 +167,31 @@ export default function ScanQR() {
     );
   }, []);
 
-  // ✅ NUEVO: Asistentes filtrados por día (solo para UI)
-const asistentesMostrados = useMemo(() => {
-  if (!mostrarSoloHoy) return asistentesDelEvento;
+  // ✅ CORREGIDO: Asistentes filtrados por día (ahora filtra correctamente)
+  const asistentesMostrados = useMemo(() => {
+    if (!mostrarSoloHoy) return asistentesDelEvento;
+    
+    // 🔥 CORRECCIÓN: Ahora filtra cada asistente individual
+    return asistentesDelEvento.filter(asistente => {
+      // 🔍 Verificar si el asistente tiene fecha de escaneo
+      if (!asistente.scan_date && !asistente.created_at) {
+        // Si no tiene fecha, lo mostramos SOLO si está pendiente (sin escanear)
+        return asistente.status !== 'SCANNED';
+      }
+      
+      // Usar scan_date si existe, si no created_at
+      const dateToCheck = asistente.scan_date || asistente.created_at;
+      return isSameDay(dateToCheck);
+    });
+  }, [asistentesDelEvento, mostrarSoloHoy, isSameDay]);
 
-  if (!eventoSeleccionado?.event_date) return asistentesDelEvento;
-
-  return asistentesDelEvento.filter(() => {
-    return isSameDay(eventoSeleccionado.event_date);
-  });
-}, [asistentesDelEvento, mostrarSoloHoy, eventoSeleccionado, isSameDay]);
+  // ✅ NUEVO: Estadísticas filtradas
+  const stats = useMemo(() => {
+    const total = asistentesMostrados.length;
+    const escaneados = asistentesMostrados.filter(a => a.status === 'SCANNED').length;
+    const pendientes = total - escaneados;
+    return { total, escaneados, pendientes };
+  }, [asistentesMostrados]);
 
   // ======================================
   // FUNCIONES ORIGINALES
@@ -310,7 +327,7 @@ const asistentesMostrados = useMemo(() => {
         }
 
         const waitMs = STOP_RETRY_BASE_MS * Math.pow(2, attempt - 1);
-        console.log(`[safeStopScanner] Esperando ${waitMs}minutos antes de reintentar`);
+        console.log(`[safeStopScanner] Esperando ${waitMs}ms antes de reintentar`);
         await new Promise(res => setTimeout(res, waitMs));
       }
     }
@@ -908,6 +925,76 @@ const handleSync = useCallback(async () => {
     }
   }, [eventoSeleccionado?.event_id, loadAsistentes]);
 
+  // ✅ NUEVO: Render de estadísticas
+  const renderStats = () => (
+    <div className="stats-container">
+      <div className="stats-card">
+        <div className="stat-item">
+          <span className="stat-label">Total</span>
+          <span className="stat-value">{stats.total}</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-label">✅ Escaneados</span>
+          <span className="stat-value" style={{ color: '#4CAF50' }}>{stats.escaneados}</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-label">⏳ Pendientes</span>
+          <span className="stat-value" style={{ color: '#FF9800' }}>{stats.pendientes}</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ✅ NUEVO: Render de lista de asistentes
+  const renderAttendees = () => (
+    <div className="attendees-panel">
+      <h3>📋 Asistentes {mostrarSoloHoy ? '(Hoy)' : '(Todos)'}</h3>
+      
+      {asistentesMostrados.length === 0 ? (
+        <p className="no-attendees">No hay asistentes para mostrar</p>
+      ) : (
+        <>
+          <div className="attendees-list">
+            {asistentesMostrados.map((asistente) => (
+              <div key={asistente.id || asistente.ticket_code} className="attendee-item">
+                <div className="attendee-info">
+                  <span className="attendee-name">
+                    {asistente.name || asistente.email || 'Sin nombre'}
+                  </span>
+                  <span className="attendee-ticket">
+                    #{asistente.ticket_code?.slice(-6)}
+                  </span>
+                </div>
+                <div className="attendee-status">
+                  {asistente.status === 'SCANNED' ? (
+                    <span className="status-badge scanned">✅ Escaneado</span>
+                  ) : (
+                    <span className="status-badge pending">⏳ Pendiente</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {stats.escaneados > 0 && (
+            <div className="progress-bar-container">
+              <div 
+                className="progress-bar" 
+                style={{ 
+                  width: `${(stats.escaneados / stats.total) * 100}%`,
+                  backgroundColor: '#4CAF50'
+                }}
+              />
+              <span className="progress-text">
+                {Math.round((stats.escaneados / stats.total) * 100)}% completado
+              </span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
   // Render del componente
   console.log('[ScanQR] Renderizando componente');
   return (
@@ -937,21 +1024,30 @@ const handleSync = useCallback(async () => {
             </option>
           ))}
         </select>
-<label className="switch">
-  <input
-    type="checkbox"
-    checked={mostrarSoloHoy}
-    onChange={(e) => setMostrarSoloHoy(e.target.checked)}
-  />
-  <span className="slider" />
-</label>
 
-<span className="switch-label">
-  Solo hoy
-</span>
+        <div className="filter-controls">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={mostrarSoloHoy}
+              onChange={(e) => setMostrarSoloHoy(e.target.checked)}
+            />
+            <span className="slider" />
+          </label>
+          <span className="switch-label">
+            {mostrarSoloHoy ? '📅 Solo hoy' : '📋 Todos'}
+          </span>
+        </div>
+
         <div className="scanner-wrapper">
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
         </div>
+
+        {/* ✅ NUEVO: Estadísticas en tiempo real */}
+        {stats.total > 0 && renderStats()}
+
+        {/* ✅ NUEVO: Lista de asistentes */}
+        {renderAttendees()}
 
         <div className="sync-button-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px' }}>
           <button
