@@ -94,22 +94,24 @@ export default function ScanQR() {
     eventoSeleccionado
   });
 
+  // ==========================================
+  // 📊 ESTADOS
+  // ==========================================
   const [scanState, setScanState] = useState({
-    cameraActive: false,
     validation: null,
     showOverlay: false,
     lastScanned: "",
-    scanningPaused: false,
-    scannerState: Html5QrcodeScannerState.NOT_STARTED,
-    pendingTickets: []
+    pendingTickets: [],
+    cameraActive: false
   });
 
-  // ✅ NUEVO: Estado para el filtro "Mostrar solo hoy"
   const [mostrarSoloHoy, setMostrarSoloHoy] = useState(true);
 
   console.log('[ScanQR] Estado inicial:', scanState);
 
-  // Refs
+  // ==========================================
+  // 📌 REFS
+  // ==========================================
   const qrRef = useRef(null);
   const qrScanner = useRef(null);
   const timeoutRef = useRef(null);
@@ -124,33 +126,18 @@ export default function ScanQR() {
   const lastScanTimeRef = useRef(0);
   const lastProcessedTicketRef = useRef();
   const lastSyncTimeRef = useRef(0);
-  const syncCooldownRef = useRef(0);  // 🔒 Cooldown de 20s para sync manual
-  
-  const hayAsistentes = useMemo(() => 
-    eventoSeleccionado?.event_id && asistentes[eventoSeleccionado.event_id]?.length > 0,
-    [eventoSeleccionado, asistentes]
-  );
+  const syncCooldownRef = useRef(0);
+  const isScannerStarting = useRef(false);
 
+  // ==========================================
+  // 🧮 DATOS
+  // ==========================================
   const asistentesDelEvento = useMemo(() => {
     if (!eventoSeleccionado?.event_id) return [];
     return asistentes[eventoSeleccionado.event_id] || [];
   }, [eventoSeleccionado, asistentes]);
 
-  // ✅ CORREGIDO: Filtro de eventos usando rango de día
-  const eventosMostrados = useMemo(() => {
-    if (!mostrarSoloHoy) return eventos;
-
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-
-    return eventos.filter(ev => {
-      const d = new Date(ev.event_date);
-      return d >= startOfDay && d < endOfDay;
-    });
-  }, [eventos, mostrarSoloHoy]);
-
-  // ✅ NUEVO: Función para comparar si una fecha es hoy
+  // ✅ Filtro de fechas robusto (sin timezone issues)
   const isSameDay = useCallback((dateStr) => {
     if (!dateStr) return false;
     const d = new Date(dateStr);
@@ -162,69 +149,22 @@ export default function ScanQR() {
     );
   }, []);
 
-  // ✅ CORREGIDO: Asistentes filtrados por fecha del evento (NO por fecha de escaneo)
-  const asistentesMostrados = useMemo(() => {
-    if (!eventoSeleccionado?.event_id) return [];
-    
-    // Si el filtro está activo, solo mostrar asistentes si el evento es hoy
-    if (mostrarSoloHoy) {
-      const eventoEsHoy = isSameDay(eventoSeleccionado.event_date);
-      return eventoEsHoy ? asistentesDelEvento : [];
-    }
-    
-    return asistentesDelEvento;
-  }, [asistentesDelEvento, mostrarSoloHoy, eventoSeleccionado, isSameDay]);
+  const eventosMostrados = useMemo(() => {
+    if (!mostrarSoloHoy) return eventos;
+    return eventos.filter(ev => isSameDay(ev.event_date));
+  }, [eventos, mostrarSoloHoy, isSameDay]);
 
-  // ✅ NUEVO: Contadores (esto era lo que pediste originalmente)
-  const totalCount = useMemo(() => {
-    return asistentesMostrados.length;
-  }, [asistentesMostrados]);
+  // ✅ Contadores optimizados
+  const totalCount = asistentesDelEvento.length;
+  const scannedCount = asistentesDelEvento.reduce(
+    (acc, a) => acc + (a.status === "SCANNED" ? 1 : 0),
+    0
+  );
+  const pendingCount = totalCount - scannedCount;
 
-  const scannedCount = useMemo(() => {
-    return asistentesMostrados.filter(a => a.status === "SCANNED").length;
-  }, [asistentesMostrados]);
-
-  // ======================================
-  // FUNCIONES ORIGINALES
-  // ======================================
-
-  const runSerial = useCallback(async (fn, label = "op") => {
-    console.log(`[runSerial] Iniciando operación serializada: ${label}`);
-    if (opLockRef.current) {
-      console.warn(`[runSerial] Omitiendo ${label}: operación previa en curso`);
-      return;
-    }
-    opLockRef.current = true;
-    try {
-      console.log(`[runSerial] Ejecutando ${label}`);
-      return await fn();
-    } catch (error) {
-      console.error(`[runSerial] Error en ${label}:`, error);
-      throw error;
-    } finally {
-      opLockRef.current = false;
-      console.log(`[runSerial] Operación ${label} completada`);
-    }
-  }, []);
-
-  const extractTicketCode = useCallback((qrText) => {
-    if (!qrText) return null;
-    console.log('[extractTicketCode] Extrayendo código de:', qrText);
-
-    try {
-      const url = new URL(qrText);
-      let path = url.pathname;
-      if (path.endsWith('/')) path = path.slice(0, -1);
-      const code = path.split('/').filter(Boolean).pop();
-      console.log('[extractTicketCode] Código extraído (URL):', code);
-      return code;
-    } catch (err) {
-      const text = qrText.replace(/\/$/, '').split('/').filter(Boolean).pop();
-      console.log('[extractTicketCode] Código extraído (Texto plano):', text);
-      return text;
-    }
-  }, []);
-
+  // ==========================================
+  // 🛠 UTILITIES
+  // ==========================================
   const safeCall = useCallback(async (fn, label = "") => {
     console.log(`[safeCall] Llamada segura iniciada: ${label}`);
     if (!isMounted.current) {
@@ -248,22 +188,32 @@ export default function ScanQR() {
 
   const showToast = useCallback((message, type) => {
     console.log(`[TOAST] ${type.toUpperCase()}: ${message}`);
-    toast[type]?.(message) || toast(message);
+    // Implementa tu sistema de toast aquí
+    alert(`${type.toUpperCase()}: ${message}`);
   }, []);
 
-  const normalizeUrl = useCallback((urlString) => {
-    console.log('[normalizeUrl] Normalizando URL:', urlString);
+  const runSerial = useCallback(async (fn, label = "op") => {
+    console.log(`[runSerial] Iniciando operación serializada: ${label}`);
+    if (opLockRef.current) {
+      console.warn(`[runSerial] Omitiendo ${label}: operación previa en curso`);
+      return;
+    }
+    opLockRef.current = true;
     try {
-      let url = new URL(urlString);
-      if (url.protocol === "http:") url.protocol = "https:";
-      console.log('[normalizeUrl] URL normalizada:', url.toString());
-      return url.toString();
+      console.log(`[runSerial] Ejecutando ${label}`);
+      return await fn();
     } catch (error) {
-      console.warn('[normalizeUrl] No es una URL válida, se usa texto plano');
-      return urlString;
+      console.error(`[runSerial] Error en ${label}:`, error);
+      throw error;
+    } finally {
+      opLockRef.current = false;
+      console.log(`[runSerial] Operación ${label} completada`);
     }
   }, []);
 
+  // ==========================================
+  // 📷 SCANNER CONTROLS (SIN PAUSE/RESUME)
+  // ==========================================
   const safeStopScanner = useCallback(async () => {
     console.log('[safeStopScanner] Iniciando detención segura del escáner');
     
@@ -361,22 +311,24 @@ export default function ScanQR() {
     }
 
     if (isMounted.current) {
-      console.log('[safeStopScanner] Actualizando estado UI a NOT_STARTED');
+      console.log('[safeStopScanner] Actualizando estado UI');
       setScanState(prev => ({
         ...prev,
-        cameraActive: false,
-        scanningPaused: false,
-        scannerState: Html5QrcodeScannerState.NOT_STARTED
+        cameraActive: false
       }));
     }
 
     try {
       if (!containerStillInDOM()) {
         qrScanner.current = null;
+        isScannerStarting.current = false;
       } else {
         if (qrScanner.current && typeof qrScanner.current.getState === "function") {
           const finalState = qrScanner.current.getState();
-          if (finalState === Html5QrcodeScannerState.NOT_STARTED) qrScanner.current = null;
+          if (finalState === Html5QrcodeScannerState.NOT_STARTED) {
+            qrScanner.current = null;
+            isScannerStarting.current = false;
+          }
         }
       }
     } catch (refErr) {
@@ -386,6 +338,12 @@ export default function ScanQR() {
 
   const startScannerCore = useCallback(async () => {
     console.log('[startScannerCore] Iniciando proceso de inicio del escáner');
+    
+    if (isScannerStarting.current) {
+      console.log('[Scanner] Ya iniciando, omitiendo');
+      return;
+    }
+
     if (!eventoSeleccionado) {
       console.warn('[startScannerCore] No hay evento seleccionado');
       showToast("Selecciona un evento antes de escanear", "warning");
@@ -398,6 +356,8 @@ export default function ScanQR() {
       console.error('[startScannerCore] Contenedor no disponible');
       return;
     }
+
+    isScannerStarting.current = true;
 
     const config = {
       fps: 10,
@@ -423,23 +383,18 @@ export default function ScanQR() {
 
       startAttemptsRef.current = 0;
       console.log('[startScannerCore] Escáner iniciado con éxito');
+      isScannerStarting.current = false;
 
       if (isMounted.current) {
-        console.log('[startScannerCore] Actualizando estado a SCANNING');
+        console.log('[startScannerCore] Actualizando estado');
         setScanState(prev => ({
           ...prev,
-          cameraActive: true,
-          scanningPaused: false,
-          scannerState: Html5QrcodeScannerState.SCANNING
+          cameraActive: true
         }));
       }
     } catch (err) {
+      isScannerStarting.current = false;
       console.error('[startScannerCore] Error al iniciar escáner:', err);
-
-      if (isMounted.current) {
-        console.log('[startScannerCore] Actualizando estado a ERROR');
-        setScanState(prev => ({ ...prev, scannerState: Html5QrcodeScannerState.ERROR }));
-      }
 
       const name = err?.name;
       if (name === "NotAllowedError") {
@@ -478,321 +433,255 @@ export default function ScanQR() {
     return runSerial(safeStopScanner, "stopScanner");
   }, [runSerial, safeStopScanner]);
 
-  const restartScanner = useCallback(async () => {
-    console.log('[restartScanner] Reiniciando escáner');
-    return runSerial(async () => {
-      await safeStopScanner();
-      await startScannerCore();
-    }, "restartScanner");
-  }, [runSerial, safeStopScanner, startScannerCore]);
-
-  // 🔍 LOG DIAGNÓSTICO: Detección de recreación del callback
-  diagLog('SCAN_HANDLER_CREATED', {
-    handlerId: Math.random().toString(36).substr(2, 9)
-  });
-
-  const handleScanSuccess = useCallback(async (decodedText) => { 
+  // ==========================================
+  // 🎯 HANDLE SCAN
+  // ==========================================
+  const handleScanSuccess = useCallback(async (decodedText) => {
     const now = Date.now();
     
-    // 🔍 LOG DIAGNÓSTICO: Cada vez que la cámara detecta un QR
+    // 🔍 LOG DIAGNÓSTICO
     diagLog('QR_DETECTED', {
       qrPreview: decodedText.substring(0, 50) + (decodedText.length > 50 ? '...' : ''),
-      callOrigin: new Error().stack.split('\n')[2]?.trim()
     });
 
-    // 🔹 Anti-spam (no más de 1 scan cada 1.5s)
+    // Anti-spam (no más de 1 scan cada 1.5s)
     if (lastScanTimeRef.current && (now - lastScanTimeRef.current) < 1500) {
-      // 🔍 LOG DIAGNÓSTICO: Anti-spam activado
       diagLog('SPAM_BLOCKED', {
         timeSinceLastScanMs: now - lastScanTimeRef.current,
-        ticketPreview: decodedText.substring(0, 30)
       });
       return;
     }
     lastScanTimeRef.current = now;
 
-    // 🔹 Condiciones mínimas
-    if (!isMounted.current || scanningPausedRef.current || !eventoSeleccionado) {
-        console.warn('[Scan] Condiciones no cumplidas, abortando');
-        return;
+    // Condiciones mínimas
+    if (!isMounted.current || !eventoSeleccionado) {
+      console.warn('[Scan] Condiciones no cumplidas, abortando');
+      return;
     }
 
-    // 🔹 Normalizar ticket
-    const normalizeTicket = (code) => code?.toLowerCase().trim();
+    // ⚠️ NO PAUSAMOS EL SCANNER - sigue corriendo
+
+    // Extraer código del ticket
     let ticketCode;
     try {
-        const url = new URL(decodedText);
-        ticketCode = url.pathname.replace(/\/$/, '').split('/').pop();
+      const url = new URL(decodedText);
+      ticketCode = url.pathname.replace(/\/$/, '').split('/').pop();
     } catch {
-        ticketCode = decodedText;
+      ticketCode = decodedText;
     }
-    const normalizedTicket = normalizeTicket(ticketCode);
-
+    
+    const normalizedTicket = ticketCode?.toLowerCase().trim();
     if (!normalizedTicket) {
-        showToast('error', 'Ticket inválido');
-        return;
+      showToast('error', 'Ticket inválido');
+      return;
     }
 
-    // 🔹 Evitar duplicados
+    // Evitar duplicados
     if (lastProcessedTicketRef.current === normalizedTicket) {
-        console.warn('[Scan] Ticket duplicado');
-        return;
+      console.warn('[Scan] Ticket duplicado');
+      return;
     }
     lastProcessedTicketRef.current = normalizedTicket;
 
-    // 🔹 Pausar escáner
-    scanningPausedRef.current = true;
-    setScanState(prev => ({
-        ...prev,
-        scanningPaused: true,
-        scannerState: Html5QrcodeScannerState.PAUSED,
-    }));
-
     try {
-        // 🔍 LOG DIAGNÓSTICO: Inicio de validación
-        diagLog('VALIDATION_START', {
-          eventId: eventoSeleccionado.event_id,
-          ticket: normalizedTicket,
-          pendingCount: scanState.pendingTickets?.length || 0
-        });
+      diagLog('VALIDATION_START', {
+        eventId: eventoSeleccionado.event_id,
+        ticket: normalizedTicket,
+      });
 
-        // ✅ Validación centralizada en el contexto
-        const result = await validarTicket(eventoSeleccionado.event_id, normalizedTicket);
+      const result = await validarTicket(eventoSeleccionado.event_id, normalizedTicket);
 
-        // 🔹 Revisar memoria: si ya existe en cache, marcar como "ya-validado"
-        const alreadyInMemory = scanState.pendingTickets?.includes(normalizedTicket);
-        setScanState(prev => ({
-            ...prev,
-            pendingTickets: alreadyInMemory ? prev.pendingTickets : [...(prev.pendingTickets || []), normalizedTicket],
-            validation: {
-                status: alreadyInMemory ? 'ya-validado' : result.type,
-                mensaje: alreadyInMemory ? 'Este ticket ya fue VALIDADO' : result.message,
-                asistente: result.asistente
-            },
-            showOverlay: true
-        }));
+      const alreadyInMemory = scanState.pendingTickets?.includes(normalizedTicket);
+      setScanState(prev => ({
+        ...prev,
+        pendingTickets: alreadyInMemory ? prev.pendingTickets : [...(prev.pendingTickets || []), normalizedTicket],
+        validation: {
+          status: alreadyInMemory ? 'ya-validado' : result.type,
+          mensaje: alreadyInMemory ? 'Este ticket ya fue VALIDADO' : result.message,
+          asistente: result.asistente
+        },
+        showOverlay: true
+      }));
+
+      // Actualizar contador en tiempo real
+      if (result.type === 'valid' && result.asistente) {
+        updateAsistenteStatus(eventoSeleccionado.event_id, result.asistente.id, 'SCANNED');
+      }
 
     } catch (error) {
-        console.error('[Scan] Error crítico:', error);
-        showToast('error', error.message || 'Error inesperado');
+      console.error('[Scan] Error crítico:', error);
+      showToast('error', error.message || 'Error inesperado');
     } finally {
-        // 🔹 Reanudar escáner de forma segura
-        setTimeout(() => {
-            if (!isMounted.current) return;
-            scanningPausedRef.current = false;
-
-            setScanState(prev => ({
-                ...prev,
-                scanningPaused: false,
-                scannerState: Html5QrcodeScannerState.SCANNING,
-            }));
-
-            if (qrScanner.current?.getState() === Html5QrcodeScannerState.PAUSED) {
-                qrScanner.current?.resume?.().catch(console.error);
-            }
-
-            // 🔹 Reset duplicados después de un delay
-            setTimeout(() => { lastProcessedTicketRef.current = null; }, 2000);
-        }, 1500);
+      // Resetear duplicado después de 2s
+      setTimeout(() => {
+        lastProcessedTicketRef.current = null;
+      }, 2000);
     }
-  }, [eventoSeleccionado, validarTicket, scanState.pendingTickets, showToast]);
+  }, [eventoSeleccionado, validarTicket, scanState.pendingTickets, showToast, updateAsistenteStatus]);
 
   const resetScannerState = useCallback(() => {
     console.log('[resetScannerState] Reseteando estado del escáner');
-    scanningPausedRef.current = false;
-    lastScannedRef.current = "";
     setScanState(prev => ({
-        ...prev,
-        scanningPaused: false,
-        showOverlay: false,
-        lastScanned: "",
-        scannerState: Html5QrcodeScannerState.SCANNING,
-        pendingTickets: []
+      ...prev,
+      showOverlay: false,
+      lastScanned: "",
+      pendingTickets: []
     }));
   }, []);
 
-  const handleScanError = useCallback((error) => {
-    console.error('[handleScanError] Error de escaneo:', error);
-    setScanState(prev => ({
-        ...prev,
-        validation: {
-            status: "error",
-            mensaje: error.message || "Error en el escaneo"
-        },
-        showOverlay: true
-    }));
-
-    timeoutRef.current = setTimeout(() => {
-        if (isMounted.current) {
-            resetScannerState();
-            restartScanner().catch(e => console.error("Error al reiniciar:", e));
-        }
-    }, 300);
-  }, [resetScannerState, restartScanner]);
-
-const handleSync = useCallback(async () => {
+  // ==========================================
+  // 🔄 SYNC
+  // ==========================================
+  const handleSync = useCallback(async () => {
     console.log('[handleSync] Iniciando sincronización manual');
 
-    // 🔒 COOLDOWN: Evita múltiples sincronizaciones en 20 segundos
     const now = Date.now();
-    if (now - syncCooldownRef.current < 1200000) {
-        const remaining = Math.ceil((1200000 - (now - syncCooldownRef.current)) / 60000);
-        console.warn('[handleSync] Cooldown activo, faltan', remaining, 'minutos');
-        showToast(`Espera ${remaining}s antes de volver a sincronizar`, 'warning');
-        return;
+    if (now - syncCooldownRef.current < 20000) {
+      const remaining = Math.ceil((20000 - (now - syncCooldownRef.current)) / 1000);
+      showToast(`Espera ${remaining}s para sincronizar`, 'warning');
+      return;
     }
     syncCooldownRef.current = now;
 
     if (!eventoSeleccionado?.event_id) {
-        const errorMsg = 'No hay evento seleccionado para sincronizar';
-        console.error('[handleSync]', errorMsg);
-        showToast(errorMsg, 'error');
-        return;
+      showToast('No hay evento seleccionado', 'error');
+      return;
     }
 
     const eventId = String(eventoSeleccionado.event_id);
     setLoading(true);
+    await stopScanner();
 
     try {
-        console.log('[handleSync] Deteniendo escáner para sincronizar');
-        await stopScanner();
+      console.log('[handleSync] Sincronizando asistentes para evento:', eventId);
+      const { success, attendees = [], message = '' } = await ScannerAPI.syncAttendees(eventId);
 
-        console.log('[handleSync] Sincronizando asistentes para evento:', eventId);
-        const { success, attendees = [], message = '' } = await ScannerAPI.syncAttendees(eventId);
-
-        console.log('[handleSync] Respuesta API:', { success, count: attendees.length, message });
-
-        if (success) {
-            console.log('[handleSync] Actualizando estado local para evento', eventId);
-
-            setAsistentes(prev => {
-                const prevState = prev || {};
-                return {
-                    ...prevState,
-                    [eventId]: attendees.map(a => ({
-                        ...a,
-                    status: a.status ?? 'PENDING'
-                    }))
-                };
-            });
-
-            showToast(`Sincronizados ${attendees.length} asistentes`, "success");
-        } else {
-            console.warn('[handleSync] Sincronización fallida:', message);
-            showToast(message || "Error al sincronizar", "error");
-        }
+      if (success) {
+        setAsistentes(prev => ({
+          ...prev,
+          [eventId]: attendees.map(a => ({
+            ...a,
+            status: a.status ?? 'PENDING'
+          }))
+        }));
+        showToast(`Sincronizados ${attendees.length} asistentes`, 'success');
+      } else {
+        showToast(message || 'Error al sincronizar', 'error');
+      }
     } catch (error) {
-        console.error('[handleSync] Error en sincronización:', {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-        });
-        showToast("Error de conexión al sincronizar", "error");
+      console.error('[handleSync] Error:', error);
+      showToast('Error de conexión al sincronizar', 'error');
     } finally {
-        setLoading(false);
-
-        console.log('[handleSync] Reanudando escáner...');
-        try {
-            await startScanner();
-            console.log('[handleSync] Escáner reiniciado con éxito');
-        } catch (scannerError) {
-            console.error('[handleSync] Error al reiniciar escáner:', {
-                name: scannerError.name,
-                message: scannerError.message
-            });
-        }
+      setLoading(false);
+      await startScanner();
     }
-}, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
+  }, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
 
   const handleEventoChange = useCallback((selectedEvent) => {
     console.log('[handleEventoChange] Cambiando evento:', selectedEvent.event_id);
     setEventoSeleccionado(selectedEvent);
     loadAsistentes(selectedEvent.event_id);
     resetScannerState();
-  }, [setEventoSeleccionado, loadAsistentes, resetScannerState]);
+    // El efecto se encarga de reiniciar el scanner
+    stopScanner();
+  }, [setEventoSeleccionado, loadAsistentes, resetScannerState, stopScanner]);
 
+  // ==========================================
+  // 🎨 RENDER OVERLAY
+  // ==========================================
   const renderValidationOverlay = useCallback(() => {
     if (!scanState.showOverlay || !scanState.validation) {
-        console.log('[renderValidationOverlay] Sin overlay para mostrar');
-        return null;
+      console.log('[renderValidationOverlay] Sin overlay para mostrar');
+      return null;
     }
 
     const { status, mensaje } = scanState.validation;
     console.log('[renderValidationOverlay] Mostrando overlay:', status, mensaje);
 
     const validationConfig = {
-        valid: { icon: checkImg, title: "TICKET VÁLIDO", color: "#4CAF50" },
-        error: { icon: crossImg, title: "ERROR", color: "#f44336" },
-        mismatch: { icon: warningImg, title: "TICKET NO PERTENECE A EVENTO", color: "#FF9800" },
-        "ya-validado": { icon: warningImg, title: "TICKET YA REGISTRADO", color: "#FFC107" },
-        'invalid': { icon: crossImg, title: "INVÁLIDO", color: "#f44336" },
-        'pending': { icon: warningImg, title: "PENDIENTE", color: "#FF9800" }
+      valid: { icon: checkImg, title: "TICKET VÁLIDO", color: "#4CAF50" },
+      error: { icon: crossImg, title: "ERROR", color: "#f44336" },
+      mismatch: { icon: warningImg, title: "TICKET NO PERTENECE A EVENTO", color: "#FF9800" },
+      "ya-validado": { icon: warningImg, title: "TICKET YA REGISTRADO", color: "#FFC107" },
+      'invalid': { icon: crossImg, title: "INVÁLIDO", color: "#f44336" },
+      'pending': { icon: warningImg, title: "PENDIENTE", color: "#FF9800" }
     };
 
     const config = validationConfig[status] || validationConfig.error;
-    console.log('[renderValidationOverlay] Configuración de overlay:', config);
 
     return (
-        <div className="fullscreen-overlay">
-            <div className="validation-content">
-                <img src={config.icon} alt={config.title} className="validation-icon" />
-                <h2 style={{ color: config.color }}>{config.title}</h2>
-                <p>{mensaje}</p>
-                {scanState.pendingTickets?.length > 0 && (
-                    <p>Tickets validados: {scanState.pendingTickets.length}</p>
-                )}
+      <div className="fullscreen-overlay">
+        <div className="validation-content">
+          <img src={config.icon} alt={config.title} className="validation-icon" />
+          <h2 style={{ color: config.color }}>{config.title}</h2>
+          <p>{mensaje}</p>
+          {scanState.validation.asistente && (
+            <div className="attendee-info">
+              <p><strong>Nombre:</strong> {scanState.validation.asistente.name}</p>
+              <p><strong>Email:</strong> {scanState.validation.asistente.email}</p>
             </div>
+          )}
+          {scanState.pendingTickets?.length > 0 && (
+            <p style={{ marginTop: '10px', fontSize: '14px', color: '#aaa' }}>
+              Tickets validados hoy: {scanState.pendingTickets.length}
+            </p>
+          )}
+          <button 
+            onClick={() => setScanState(prev => ({ ...prev, showOverlay: false, validation: null }))}
+            style={{ 
+              marginTop: '15px', 
+              padding: '8px 20px', 
+              cursor: 'pointer',
+              background: '#333',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontWeight: 'bold'
+            }}
+          >
+            Cerrar
+          </button>
         </div>
+      </div>
     );
   }, [scanState.showOverlay, scanState.validation, scanState.pendingTickets]);
 
-  // ======================
-  // EFECTOS OPTIMIZADOS
-  // ======================
-
-  // ✅ NUEVO: Efecto para controlar scanner cuando cambia el filtro
+  // ==========================================
+  // 🎯 EFFECTS
+  // ==========================================
+  
+  // Efecto #1: Control maestro del scanner (solo start/stop)
   useEffect(() => {
-    if (!mostrarSoloHoy || !qrScanner.current || !eventoSeleccionado) return;
+    const controller = new AbortController();
     
-    const eventoEsHoy = isSameDay(eventoSeleccionado.event_date);
-    
-    // Si el evento NO es hoy y el scanner está activo → pausar
-    if (!eventoEsHoy && qrScanner.current.getState() === Html5QrcodeScannerState.SCANNING) {
-      console.log('[Filtro] Evento no es hoy, pausando scanner');
-      safeCall(() => qrScanner.current.pause(), "pauseOnFilter");
-      setScanState(prev => ({
-        ...prev,
-        scanningPaused: true,
-        scannerState: Html5QrcodeScannerState.PAUSED
-      }));
-    }
-    
-    // Si el evento ES hoy y el scanner está pausado → reanudar
-    if (eventoEsHoy && qrScanner.current.getState() === Html5QrcodeScannerState.PAUSED) {
-      console.log('[Filtro] Evento es hoy, reanudando scanner');
-      safeCall(() => qrScanner.current.resume(), "resumeOnFilter");
-      setScanState(prev => ({
-        ...prev,
-        scanningPaused: false,
-        scannerState: Html5QrcodeScannerState.SCANNING
-      }));
-    }
-  }, [mostrarSoloHoy, eventoSeleccionado, isSameDay, safeCall]);
+    const manageScanner = async () => {
+      if (!eventoSeleccionado?.event_id || controller.signal.aborted) return;
+      
+      console.log('[manageScanner] Asistentes para el evento:', asistentesDelEvento.length);
 
-  // Efecto #1: Sincronización automática y manejo de visibilidad
+      // El scanner solo debe estar activo si hay asistentes
+      const shouldActivate = asistentesDelEvento.length > 0;
+      
+      if (shouldActivate && !qrScanner.current) {
+        await startScanner();
+      } else if (!shouldActivate && qrScanner.current) {
+        await stopScanner();
+      }
+    };
+    
+    manageScanner();
+    return () => controller.abort();
+  }, [eventoSeleccionado, asistentesDelEvento, startScanner, stopScanner]);
+
+  // Efecto #2: Sincronización automática
   useEffect(() => {
     const controller = new AbortController();
     let syncInterval;
-    let initialSyncTimer;
 
     const syncAutomatically = async () => {
-      if (!eventoSeleccionado?.event_id || controller.signal.aborted) {
-        console.log('[syncAutomatically] Condiciones no cumplidas para sincronizar');
-        return;
-      }
+      if (!eventoSeleccionado?.event_id || controller.signal.aborted) return;
 
       const eventId = String(eventoSeleccionado.event_id);
-      const asistentesEvento = asistentes[eventId] || [];
       const now = Date.now();
 
       if (now - lastSyncTimeRef.current < 300000 && lastSyncTimeRef.current !== 0) {
@@ -821,91 +710,16 @@ const handleSync = useCallback(async () => {
       }
     };
 
-    const handleVisibilityChange = async () => {
-      if (!qrScanner.current) return;
-
-      if (document.hidden) {
-        console.log('[onVis] Pestaña oculta, pausando escáner si está activo');
-        if (qrScanner.current.getState() === Html5QrcodeScannerState.SCANNING) {
-          await safeCall(() => qrScanner.current.pause(), "visibilityPause");
-          if (isMounted.current) {
-            setScanState(prev => ({ ...prev, scannerState: Html5QrcodeScannerState.PAUSED }));
-          }
-        }
-      } else {
-        console.log('[onVis] Pestaña visible, reanudando escáner si corresponde');
-        if (!scanningPausedRef.current &&
-            qrScanner.current.getState() === Html5QrcodeScannerState.PAUSED) {
-          await safeCall(() => qrScanner.current.resume(), "visibilityResume");
-          if (isMounted.current) {
-            setScanState(prev => ({ ...prev, scannerState: Html5QrcodeScannerState.SCANNING }));
-          }
-        }
-        syncAutomatically();
-      }
-    };
-
-    // Configuración inicial
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     syncInterval = setInterval(syncAutomatically, 300000);
-    initialSyncTimer = setTimeout(() => {
-      if (document.visibilityState === 'visible') {
-        syncAutomatically();
-      }
-    }, 1000);
+    
+    // Sincronizar al montar
+    setTimeout(syncAutomatically, 1000);
 
     return () => {
       controller.abort();
       clearInterval(syncInterval);
-      clearTimeout(initialSyncTimer);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [eventoSeleccionado?.event_id, setAsistentes, asistentes, safeCall]);
-
-  // Efecto #2: Control maestro de la cámara
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const manageCamera = async () => {
-      if (!eventoSeleccionado?.event_id || controller.signal.aborted) return;
-
-      console.log('[manageCamera] Asistentes para el evento:', asistentesDelEvento.length);
-
-      if (eventoSeleccionado.event_id !== lastEventIdRef.current) {
-        console.log('[manageCamera] Evento cambiado, reiniciando escáner');
-        lastEventIdRef.current = eventoSeleccionado.event_id;
-        await stopScanner();
-        if (asistentesDelEvento.length > 0) {
-          await startScanner();
-        }
-        return;
-      }
-
-      const shouldActivate = 
-        asistentesDelEvento.length > 0 && 
-        !scanState.scanningPaused;
-      
-      const shouldDeactivate = 
-        !asistentesDelEvento.length || 
-        scanState.scanningPaused;
-
-      if (shouldActivate && !scanState.cameraActive) {
-        await startScanner();
-      } else if (shouldDeactivate && scanState.cameraActive) {
-        await stopScanner();
-      }
-    };
-
-    manageCamera();
-    return () => controller.abort();
-  }, [
-    eventoSeleccionado,
-    asistentesDelEvento,
-    scanState.scanningPaused,
-    scanState.cameraActive,
-    startScanner,
-    stopScanner
-  ]);
+  }, [eventoSeleccionado?.event_id, setAsistentes]);
 
   // Efecto #3: Manejo de validación y overlay
   useEffect(() => {
@@ -945,8 +759,11 @@ const handleSync = useCallback(async () => {
     }
   }, [eventoSeleccionado?.event_id, loadAsistentes]);
 
-  // Render del componente
+  // ==========================================
+  // 🎨 RENDER
+  // ==========================================
   console.log('[ScanQR] Renderizando componente');
+  
   return (
     <div className="scanner-container">
       <header className="header">
@@ -967,8 +784,6 @@ const handleSync = useCallback(async () => {
           }}
         >
           <option value="" disabled>Seleccione un evento</option>
-          
-          {/* ✅ NUEVO: Usar eventos filtrados */}
           {eventosMostrados.map(evt => (
             <option key={evt.event_id} value={evt.event_id}>
               {evt.event_title} ({evt.event_id})
@@ -976,13 +791,15 @@ const handleSync = useCallback(async () => {
           ))}
         </select>
 
-        {/* ✅ NUEVO: Switch "Solo hoy" */}
         <div className="filter-controls">
           <label className="switch">
             <input
               type="checkbox"
               checked={mostrarSoloHoy}
-              onChange={(e) => setMostrarSoloHoy(e.target.checked)}
+              onChange={(e) => {
+                setMostrarSoloHoy(e.target.checked);
+                // ✅ NO tocamos el scanner aquí - solo cambia la UI
+              }}
             />
             <span className="slider" />
           </label>
@@ -991,7 +808,7 @@ const handleSync = useCallback(async () => {
           </span>
         </div>
 
-        {/* ✅ NUEVO: Contadores (esto era lo que pediste) */}
+        {/* 📊 CONTADORES OPTIMIZADOS */}
         {eventoSeleccionado && (
           <div className="counters-container">
             <div className="counter-card">
@@ -1007,21 +824,43 @@ const handleSync = useCallback(async () => {
             <div className="counter-card">
               <span className="counter-label">⏳ Pendientes</span>
               <span className="counter-value" style={{ color: '#FF9800' }}>
-                {totalCount - scannedCount}
+                {pendingCount}
               </span>
             </div>
           </div>
         )}
 
-        <div className="scanner-wrapper">
+        <div className="scanner-wrapper" style={{ position: 'relative' }}>
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
+          
+          {/* Mensaje cuando no hay asistentes */}
+          {asistentesDelEvento.length === 0 && eventoSeleccionado && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(0,0,0,0.7)',
+              color: 'white',
+              borderRadius: '12px',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              zIndex: 10
+            }}>
+              <span>No hay asistentes para este evento</span>
+            </div>
+          )}
         </div>
 
-        <div className="sync-button-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px' }}>
+        <div className="sync-button-container">
           <button
             className="sync-button"
             onClick={handleSync}
-            disabled={scanState.scanningPaused || !eventoSeleccionado}
+            disabled={!eventoSeleccionado || asistentesDelEvento.length === 0}
           >
             🔄 Re-sincronizar asistentes
           </button>
