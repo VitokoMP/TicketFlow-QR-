@@ -40,7 +40,7 @@ export const EventoProvider = ({ children }) => {
   // Montaje / Desmontaje
   // -----------------------
   useEffect(() => {
-    localStorage.removeItem('ticketflow_asistentes');
+//    localStorage.removeItem('ticketflow_asistentes');
     const savedBuffer = localStorage.getItem('ticketflow_pending_scans');
     if (savedBuffer) syncBufferRef.current = JSON.parse(savedBuffer);
 
@@ -62,8 +62,24 @@ export const EventoProvider = ({ children }) => {
 
   // Persistir cambios
   useEffect(() => {
+  if (Object.keys(asistentes).length > 0) {
     localStorage.setItem('ticketflow_asistentes', JSON.stringify(asistentes));
-  }, [asistentes]);
+  }
+}, [asistentes]);
+
+// Cargar datos guardados al iniciar
+useEffect(() => {
+  const saved = localStorage.getItem('ticketflow_asistentes');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      setAsistentes(parsed);
+      console.log('[EventoContext] Asistentes cargados desde localStorage:', Object.keys(parsed).length);
+    } catch (e) {
+      console.error('[EventoContext] Error al cargar localStorage:', e);
+    }
+  }
+}, []);
 
   useEffect(() => {
     localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
@@ -184,77 +200,52 @@ export const EventoProvider = ({ children }) => {
     }
   }, [isOnline]);
 
-const validarTicket = useCallback(async (eventId, ticketCode) => {
-  try {
-    const normalizedEventId = String(eventId);
-    const normalizedTicketCode = String(ticketCode).toLowerCase().trim();
+const validarTicket = useCallback((eventId, ticketCode) => {
+  const normalizedEventId = String(eventId);
+  const normalizedTicketCode = String(ticketCode).toLowerCase().trim();
 
-    console.log(`🔍 [DEBUG] Validando ticket: ${normalizedTicketCode} para evento: ${normalizedEventId}`);
+  console.log(`🔍 [DEBUG] Validando ticket OFFLINE: ${normalizedTicketCode}`);
 
-    const asistenteFromSelected = eventoSeleccionado?.asistentes?.find(a => 
-      String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
-      String(a.id).toLowerCase() === normalizedTicketCode
-    );
+  const asistente = asistentes[normalizedEventId]?.find(a => 
+    String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
+    String(a.id).toLowerCase() === normalizedTicketCode
+  );
 
-    const asistenteFromGlobal = asistentes[eventId]?.find(a => 
-      String(a.ticket_code).toLowerCase() === normalizedTicketCode || 
-      String(a.id).toLowerCase() === normalizedTicketCode
-    );
-
-    const asistente = asistenteFromSelected || asistenteFromGlobal;
-
-    // ✅ CASO 1: Ticket encontrado en caché
-    if (asistente) {
-      console.log(`🔍 [DEBUG] Asistente encontrado:`, asistente);
-      
-      if (asistente.status === 'SCANNED') {
-        console.log(`🔍 [DEBUG] Ticket ya validado anteriormente`);
-        return { 
-          success: false, 
-          type: 'ya-validado', 
-          message: `Ticket ya validado: ${asistente.nombre}`,
-          asistente 
-        };
-      }
-
-      console.log(`🔍 [DEBUG] Marcando como SCANNED...`);
-      updateAsistenteStatus(asistente.id, 'SCANNED');
-      
-      // ✅ Usar push directo, no addToBuffer
-      syncBufferRef.current.push({ 
-        ticket_id: String(asistente.id), 
-        event_id: normalizedEventId, 
-        status: 'SCANNED', 
-        source: 'local' 
-      });
-      localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
-
-      return { 
-        success: true, 
-        type: 'valid', 
-        message: `Validado: ${asistente.nombre}`,
-        asistente 
-      };
-    }
-
-    // ✅ CASO 2: Ticket NO encontrado → INVÁLIDO (SIN BACKEND)
-    console.log(`🔍 [DEBUG] Ticket NO encontrado en caché`);
+  if (!asistente) {
     return { 
       success: false, 
       type: 'invalid', 
-      message: 'Ticket no válido para este evento. Sincroniza los asistentes si crees que debería estar.'
-    };
-
-  } catch (error) {
-    console.error('[Validación] Error:', error);
-    return { 
-      success: false, 
-      type: 'error', 
-      message: error.message || 'Error inesperado' 
+      message: 'Ticket no válido para este evento'
     };
   }
-}, [eventoSeleccionado, asistentes, updateAsistenteStatus]);
 
+  if (asistente.status === 'SCANNED') {
+    return { 
+      success: false, 
+      type: 'ya-validado', 
+      message: `Ticket ya validado: ${asistente.nombre}`,
+      asistente 
+    };
+  }
+
+  updateAsistenteStatus(asistente.id, 'SCANNED');
+  
+  syncBufferRef.current.push({ 
+    ticket_id: String(asistente.id), 
+    event_id: normalizedEventId, 
+    status: 'SCANNED', 
+    source: 'local',
+    scanned_at: new Date().toISOString()
+  });
+  localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
+
+  return { 
+    success: true, 
+    type: 'valid', 
+    message: `Validado: ${asistente.nombre}`,
+    asistente: { ...asistente, status: 'SCANNED' }
+  };
+}, [asistentes, updateAsistenteStatus]);
   // -----------------------
   // Cargar eventos al inicio
   // -----------------------

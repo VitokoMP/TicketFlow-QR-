@@ -466,7 +466,7 @@ export default function ScanQR() {
     handlerId: Math.random().toString(36).substr(2, 9)
   });
 
-  const handleScanSuccess = useCallback(async (decodedText) => { 
+  const handleScanSuccess = useCallback( (decodedText) => { 
     const now = Date.now();
     
     // 🔍 LOG DIAGNÓSTICO: Cada vez que la cámara detecta un QR
@@ -532,7 +532,7 @@ export default function ScanQR() {
         });
 
         // ✅ Validación centralizada en el contexto
-        const result = await validarTicket(eventoSeleccionado.event_id, normalizedTicket);
+        const result = validarTicket(eventoSeleccionado.event_id, normalizedTicket);
 
         // 🔹 Revisar memoria: si ya existe en cache, marcar como "ya-validado"
         const alreadyInMemory = scanState.pendingTickets?.includes(normalizedTicket);
