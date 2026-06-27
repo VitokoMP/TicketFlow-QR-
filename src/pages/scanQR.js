@@ -100,7 +100,8 @@ export default function ScanQR() {
     showOverlay: false,
     lastScanned: "",
     scanningPaused: false,
-    scannerState: Html5QrcodeScannerState.NOT_STARTED
+    scannerState: Html5QrcodeScannerState.NOT_STARTED,
+    pendingTickets: []
   });
 
   console.log('[ScanQR] Estado inicial:', scanState);
@@ -131,12 +132,6 @@ export default function ScanQR() {
     if (!eventoSeleccionado?.event_id) return [];
     return asistentes[eventoSeleccionado.event_id] || [];
   }, [eventoSeleccionado, asistentes]);
-
-  // 🔥 FUENTE DE VERDAD ÚNICA: contador derivado del estado real de asistentes,
-  // NO de un array local. Solo cuenta los que efectivamente fueron validados (SCANNED).
-  const scannedCount = useMemo(() => {
-    return asistentesDelEvento.filter(a => a.status === 'SCANNED').length;
-  }, [asistentesDelEvento]);
 
   // ======================================
   // FUNCIONES ORIGINALES
@@ -441,8 +436,9 @@ export default function ScanQR() {
   }, [runSerial, safeStopScanner, startScannerCore]);
 
   // 🔍 LOG DIAGNÓSTICO: Detección de recreación del callback
-  // (Movido a useEffect más abajo, ligado a [handleScanSuccess],
-  // para medir recreaciones reales del callback y no renders del componente)
+  diagLog('SCAN_HANDLER_CREATED', {
+    handlerId: Math.random().toString(36).substr(2, 9)
+  });
 
   const handleScanSuccess = useCallback(async (decodedText) => { 
     const now = Date.now();
@@ -503,32 +499,23 @@ export default function ScanQR() {
 
     try {
         // 🔍 LOG DIAGNÓSTICO: Inicio de validación
-        // pendingCount ahora refleja el conteo REAL de asistentes con status SCANNED,
-        // derivado de asistentesDelEvento (fuente de verdad), no de un array local.
         diagLog('VALIDATION_START', {
           eventId: eventoSeleccionado.event_id,
           ticket: normalizedTicket,
-          pendingCount: scannedCount
+          pendingCount: scanState.pendingTickets?.length || 0
         });
 
         // ✅ Validación centralizada en el contexto
         const result = await validarTicket(eventoSeleccionado.event_id, normalizedTicket);
 
-        // 🔍 LOG DIAGNÓSTICO: Resultado real de la validación
-        diagLog('VALIDATION_RESULT', {
-          ticket: normalizedTicket,
-          type: result.type
-        });
-
-        // 🔹 El status (valid / mismatch / ya-validado / invalid / error) viene
-        // directamente del backend a través de result.type. Ya no se mantiene
-        // un array local de "pendingTickets" para decidir esto: el backend
-        // (asistentesDelEvento / validarTicket) es la única fuente de verdad.
+        // 🔹 Revisar memoria: si ya existe en cache, marcar como "ya-validado"
+        const alreadyInMemory = scanState.pendingTickets?.includes(normalizedTicket);
         setScanState(prev => ({
             ...prev,
+            pendingTickets: alreadyInMemory ? prev.pendingTickets : [...(prev.pendingTickets || []), normalizedTicket],
             validation: {
-                status: result.type,
-                mensaje: result.message,
+                status: alreadyInMemory ? 'ya-validado' : result.type,
+                mensaje: alreadyInMemory ? 'Este ticket ya fue VALIDADO' : result.message,
                 asistente: result.asistente
             },
             showOverlay: true
@@ -557,7 +544,7 @@ export default function ScanQR() {
             setTimeout(() => { lastProcessedTicketRef.current = null; }, 2000);
         }, 1500);
     }
-  }, [eventoSeleccionado, validarTicket, showToast, scannedCount]);
+  }, [eventoSeleccionado, validarTicket, scanState.pendingTickets, showToast]);
 
   const resetScannerState = useCallback(() => {
     console.log('[resetScannerState] Reseteando estado del escáner');
@@ -568,7 +555,8 @@ export default function ScanQR() {
         scanningPaused: false,
         showOverlay: false,
         lastScanned: "",
-        scannerState: Html5QrcodeScannerState.SCANNING
+        scannerState: Html5QrcodeScannerState.SCANNING,
+        pendingTickets: []
     }));
   }, []);
 
@@ -591,8 +579,7 @@ export default function ScanQR() {
     }, 300);
   }, [resetScannerState, restartScanner]);
 
-  // ✅ FIX #3: syncBuffer ahora SOLO limpia el buffer, NO toca UI
-  const handleSync = useCallback(async () => {
+const handleSync = useCallback(async () => {
     console.log('[handleSync] Iniciando sincronización manual');
 
     // 🔒 COOLDOWN: Evita múltiples sincronizaciones en 20 segundos
@@ -627,7 +614,6 @@ export default function ScanQR() {
         if (success) {
             console.log('[handleSync] Actualizando estado local para evento', eventId);
 
-            // ✅ FIX: Escritura directa con setAsistentes, sin applyAsistenteUpdate
             setAsistentes(prev => {
                 const prevState = prev || {};
                 return {
@@ -665,15 +651,12 @@ export default function ScanQR() {
             });
         }
     }
-  }, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
+}, [eventoSeleccionado, startScanner, stopScanner, setLoading, setAsistentes, showToast]);
 
-  // ✅ FIX #5: handleEventoChange con setTimeout para evitar race con scanner
   const handleEventoChange = useCallback((selectedEvent) => {
     console.log('[handleEventoChange] Cambiando evento:', selectedEvent.event_id);
     setEventoSeleccionado(selectedEvent);
-    setTimeout(() => {
-      loadAsistentes(selectedEvent.event_id);
-    }, 0);
+    loadAsistentes(selectedEvent.event_id);
     resetScannerState();
   }, [setEventoSeleccionado, loadAsistentes, resetScannerState]);
 
@@ -704,13 +687,13 @@ export default function ScanQR() {
                 <img src={config.icon} alt={config.title} className="validation-icon" />
                 <h2 style={{ color: config.color }}>{config.title}</h2>
                 <p>{mensaje}</p>
-                {asistentesDelEvento.length > 0 && (
-                    <p>Tickets validados: {scannedCount} / {asistentesDelEvento.length}</p>
+                {scanState.pendingTickets?.length > 0 && (
+                    <p>Tickets validados: {scanState.pendingTickets.length}</p>
                 )}
             </div>
         </div>
     );
-  }, [scanState.showOverlay, scanState.validation, scannedCount, asistentesDelEvento.length]);
+  }, [scanState.showOverlay, scanState.validation, scanState.pendingTickets]);
 
   // ======================
   // EFECTOS OPTIMIZADOS
@@ -882,15 +865,6 @@ export default function ScanQR() {
     }
   }, [eventoSeleccionado?.event_id, loadAsistentes]);
 
-  // Efecto #6: Diagnóstico real de recreación del callback de escaneo
-  // (Ligado a [handleScanSuccess], NO al render del componente, para medir
-  // cuántas veces se recrea de verdad la función que usa el scanner)
-  useEffect(() => {
-    diagLog('SCAN_HANDLER_CREATED', {
-      handlerId: Math.random().toString(36).substr(2, 9)
-    });
-  }, [handleScanSuccess]);
-
   // Render del componente
   console.log('[ScanQR] Renderizando componente');
   return (
@@ -920,34 +894,6 @@ export default function ScanQR() {
           ))}
         </select>
 
-        {asistentesDelEvento.length > 0 && (
-       <div className="scan-counter-bar">
-  <div>
-    <div className="scan-counter-label">
-      Tickets Validados
-    </div>
-
-    <div className="scan-counter-value">
-      {scannedCount}
-      <span className="scan-counter-total">
-        {" "} / {asistentesDelEvento.length}
-      </span>
-    </div>
-  </div>
-
-  <div className="sync-status">
-    <span
-      className={`sync-status-dot ${
-        !navigator.onLine ? 'is-offline' : ''
-      }`}
-    />
-    {navigator.onLine ? 'Online' : 'Offline'}
-  </div>
-</div>
-
-        )}
-
-
         <div className="scanner-wrapper">
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
         </div>
@@ -975,7 +921,7 @@ export default function ScanQR() {
             onClick={() => window.__downloadDiagLogs?.()}
             style={{ backgroundColor: '#666', color: '#fff' }}
           >
-            📥 descargar log de bugs
+            📥 Descargar Logs de Diagnóstico
           </button>
         </div>
       </div>
