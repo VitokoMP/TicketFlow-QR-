@@ -14,7 +14,10 @@ const ERROR_DISPLAY_TIME = 1000;
 const STOP_RETRY_MAX = 8;
 const STOP_RETRY_BASE_MS = 120;
 const MAX_BACKOFF_MS = 10000;
-
+const totalCount = asistentesDelEvento.length;
+const scannedCount = useMemo(() => {
+  return asistentesDelEvento.filter(a => a.status === "SCANNED").length;
+}, [asistentesDelEvento]);
 // ==========================================
 // 🔍 DIAGNÓSTICO: Buffer circular en memoria
 // ==========================================
@@ -931,6 +934,10 @@ const handleSync = useCallback(async () => {
 <span className="switch-label">
   Solo hoy
 </span>
+
+<div className="scan-counter">
+  {scannedCount} / {totalCount}
+</div>
         <div className="scanner-wrapper">
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
         </div>
