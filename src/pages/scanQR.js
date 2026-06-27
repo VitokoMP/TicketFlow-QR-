@@ -166,15 +166,15 @@ export default function ScanQR() {
   }, []);
 
   // ✅ NUEVO: Asistentes filtrados por día (solo para UI)
-  const asistentesMostrados = useMemo(() => {
-    if (!mostrarSoloHoy) return asistentesDelEvento;
-    return asistentesDelEvento.filter(a => isSameDay(a.event_date));
-  }, [asistentesDelEvento, mostrarSoloHoy, isSameDay]);
+const asistentesMostrados = useMemo(() => {
+  if (!mostrarSoloHoy) return asistentesDelEvento;
 
-  // ✅ NUEVO: Contador de SCANNED (la "verdad UI")
-  const scannedCount = useMemo(() => {
-    return asistentesMostrados.filter(a => a.status === "SCANNED").length;
-  }, [asistentesMostrados]);
+  if (!eventoSeleccionado?.event_date) return asistentesDelEvento;
+
+  return asistentesDelEvento.filter(() => {
+    return isSameDay(eventoSeleccionado.event_date);
+  });
+}, [asistentesDelEvento, mostrarSoloHoy, eventoSeleccionado, isSameDay]);
 
   // ======================================
   // FUNCIONES ORIGINALES
