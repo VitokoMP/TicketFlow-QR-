@@ -43,7 +43,6 @@
   font-size: 0.95rem;
 }
 
-
 /* ==================== */
 /* NAVIGATION */
 /* Contenedor del botón (opcional, solo si quieres centrar) */
@@ -78,7 +77,7 @@
 
 /* Shine effect */
 .sync-button::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: -100%;
@@ -86,9 +85,9 @@
   height: 100%;
   background: linear-gradient(
     45deg,
-    rgba(255,255,255,0.1) 0%,
-    rgba(255,255,255,0.4) 50%,
-    rgba(255,255,255,0.1) 100%
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0.1) 100%
   );
   transform: skewX(-20deg);
   transition: all 0.7s ease;
@@ -159,13 +158,19 @@
 }
 
 @keyframes pulse {
-  0% { opacity: 0.8; }
-  50% { opacity: 1; }
-  100% { opacity: 0.8; }
+  0% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.8;
+  }
 }
 
 /* Estilo para el cuadro de escaneo interno */
-#html5-qrcode-anchor-scan-type-change, 
+#html5-qrcode-anchor-scan-type-change,
 #html5-qrcode-anchor-scan-type-change + span {
   display: none !important; /* Oculta el selector de cámara si no es necesario */
 }
@@ -176,7 +181,7 @@
 body {
   background-color: #121212; /* Fondo oscuro */
   color: #ffffff; /* Texto blanco */
-  font-family: 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   margin: 0;
   padding: 0;
   min-height: 100vh;
@@ -265,9 +270,9 @@ body {
 /* ========================= */
 #qr-reader {
   width: 100% !important;
-  max-width: 600px;   /* limita para escritorio */
-  height: 400px;      /* altura fija decente para PC */
-  max-height: 70vh;   /* adaptable a móviles */
+  max-width: 600px; /* limita para escritorio */
+  height: 400px; /* altura fija decente para PC */
+  max-height: 70vh; /* adaptable a móviles */
   position: relative;
   overflow: hidden;
 }
@@ -279,8 +284,6 @@ body {
   object-fit: cover;
   display: block !important;
 }
-
-
 
 /* Contenedor del escáner */
 #qr-reader > div:first-child {
@@ -295,7 +298,7 @@ body {
   background: rgba(0, 0, 0, 0) !important;
   padding: 10px;
   font-weight: bold;
-} 
+}
 /* ========================= */
 #qr-reader {
   position: relative;
@@ -310,7 +313,6 @@ body {
 #html5-qrcode-anchor-scan-type-change {
   display: none !important;
 }
-
 
 .scan-counter-bar {
   display: flex;
@@ -425,7 +427,10 @@ body {
 .slider {
   position: absolute;
   cursor: pointer;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 
   background-color: #2a2a2a;
   border: 2px solid #444;
@@ -464,4 +469,284 @@ body {
   font-size: 14px;
   color: #ddd;
   user-select: none;
+}
+/* Estadísticas */
+.stats-container {
+  padding: 10px 20px;
+}
+
+.stats-card {
+  display: flex;
+  justify-content: space-around;
+  background: #f5f5f5;
+  border-radius: 10px;
+  padding: 15px;
+  margin: 10px 0;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  margin-top: 5px;
+}
+
+/* Lista de asistentes */
+.attendees-panel {
+  padding: 20px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: white;
+  border-radius: 10px;
+  margin: 10px 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.attendees-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attendee-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.attendee-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attendee-name {
+  font-weight: 500;
+}
+
+.attendee-ticket {
+  font-size: 12px;
+  color: #888;
+}
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.scanned {
+  background: #e8f5e9;
+  color: #4caf50;
+}
+
+.status-badge.pending {
+  background: #fff3e0;
+  color: #ff9800;
+}
+
+/* Barra de progreso */
+.progress-bar-container {
+  position: relative;
+  width: 100%;
+  height: 20px;
+  background: #eee;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 15px;
+}
+
+.progress-bar {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 10px;
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: bold;
+  color: #333;
+}
+
+/* Filtros */
+.filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ccc;
+  transition: 0.4s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  transition: 0.4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background: #2196f3;
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+.switch-label {
+  font-size: 14px;
+  color: #333;
+}
+
+.no-attendees {
+  text-align: center;
+  color: #999;
+  padding: 20px;
+}
+/* Controles de filtro */
+.filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px 20px;
+  background: #f9f9f9;
+  border-radius: 10px;
+  margin: 10px 0;
+  justify-content: center;
+}
+
+/* Switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ccc;
+  transition: .4s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background: #2196F3;
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+.switch-label {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+/* Contadores */
+.counters-container {
+  display: flex;
+  gap: 15px;
+  padding: 15px;
+  background: #f5f5f5;
+  border-radius: 10px;
+  margin: 10px 0;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.counter-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 20px;
+  background: white;
+  border-radius: 8px;
+  min-width: 80px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.counter-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.counter-value {
+  font-size: 28px;
+  font-weight: bold;
+  margin-top: 5px;
 }

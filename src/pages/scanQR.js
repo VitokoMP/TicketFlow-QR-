@@ -136,26 +136,21 @@ export default function ScanQR() {
     return asistentes[eventoSeleccionado.event_id] || [];
   }, [eventoSeleccionado, asistentes]);
 
-  const totalCount = useMemo(() => {
-    return asistentesDelEvento.length;
-  }, [asistentesDelEvento]);
-
-  const scannedCount = useMemo(() => {
-    return asistentesDelEvento.filter(a => a.status === "SCANNED").length;
-  }, [asistentesDelEvento]);
-
+  // ✅ CORREGIDO: Filtro de eventos usando rango de día
   const eventosMostrados = useMemo(() => {
     if (!mostrarSoloHoy) return eventos;
 
     const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
     return eventos.filter(ev => {
       const d = new Date(ev.event_date);
-      return d.toDateString() === now.toDateString();
+      return d >= startOfDay && d < endOfDay;
     });
   }, [eventos, mostrarSoloHoy]);
 
-  // ✅ NUEVO: Función segura para comparar fechas (evita problemas de timezone)
+  // ✅ NUEVO: Función para comparar si una fecha es hoy
   const isSameDay = useCallback((dateStr) => {
     if (!dateStr) return false;
     const d = new Date(dateStr);
@@ -167,30 +162,26 @@ export default function ScanQR() {
     );
   }, []);
 
-  // ✅ CORREGIDO: Asistentes filtrados por día (ahora filtra correctamente)
+  // ✅ CORREGIDO: Asistentes filtrados por fecha del evento (NO por fecha de escaneo)
   const asistentesMostrados = useMemo(() => {
-    if (!mostrarSoloHoy) return asistentesDelEvento;
+    if (!eventoSeleccionado?.event_id) return [];
     
-    // 🔥 CORRECCIÓN: Ahora filtra cada asistente individual
-    return asistentesDelEvento.filter(asistente => {
-      // 🔍 Verificar si el asistente tiene fecha de escaneo
-      if (!asistente.scan_date && !asistente.created_at) {
-        // Si no tiene fecha, lo mostramos SOLO si está pendiente (sin escanear)
-        return asistente.status !== 'SCANNED';
-      }
-      
-      // Usar scan_date si existe, si no created_at
-      const dateToCheck = asistente.scan_date || asistente.created_at;
-      return isSameDay(dateToCheck);
-    });
-  }, [asistentesDelEvento, mostrarSoloHoy, isSameDay]);
+    // Si el filtro está activo, solo mostrar asistentes si el evento es hoy
+    if (mostrarSoloHoy) {
+      const eventoEsHoy = isSameDay(eventoSeleccionado.event_date);
+      return eventoEsHoy ? asistentesDelEvento : [];
+    }
+    
+    return asistentesDelEvento;
+  }, [asistentesDelEvento, mostrarSoloHoy, eventoSeleccionado, isSameDay]);
 
-  // ✅ NUEVO: Estadísticas filtradas
-  const stats = useMemo(() => {
-    const total = asistentesMostrados.length;
-    const escaneados = asistentesMostrados.filter(a => a.status === 'SCANNED').length;
-    const pendientes = total - escaneados;
-    return { total, escaneados, pendientes };
+  // ✅ NUEVO: Contadores (esto era lo que pediste originalmente)
+  const totalCount = useMemo(() => {
+    return asistentesMostrados.length;
+  }, [asistentesMostrados]);
+
+  const scannedCount = useMemo(() => {
+    return asistentesMostrados.filter(a => a.status === "SCANNED").length;
   }, [asistentesMostrados]);
 
   // ======================================
@@ -500,7 +491,7 @@ export default function ScanQR() {
     handlerId: Math.random().toString(36).substr(2, 9)
   });
 
-  const handleScanSuccess = useCallback( (decodedText) => { 
+  const handleScanSuccess = useCallback(async (decodedText) => { 
     const now = Date.now();
     
     // 🔍 LOG DIAGNÓSTICO: Cada vez que la cámara detecta un QR
@@ -566,7 +557,7 @@ export default function ScanQR() {
         });
 
         // ✅ Validación centralizada en el contexto
-        const result = validarTicket(eventoSeleccionado.event_id, normalizedTicket);
+        const result = await validarTicket(eventoSeleccionado.event_id, normalizedTicket);
 
         // 🔹 Revisar memoria: si ya existe en cache, marcar como "ya-validado"
         const alreadyInMemory = scanState.pendingTickets?.includes(normalizedTicket);
@@ -759,6 +750,35 @@ const handleSync = useCallback(async () => {
   // EFECTOS OPTIMIZADOS
   // ======================
 
+  // ✅ NUEVO: Efecto para controlar scanner cuando cambia el filtro
+  useEffect(() => {
+    if (!mostrarSoloHoy || !qrScanner.current || !eventoSeleccionado) return;
+    
+    const eventoEsHoy = isSameDay(eventoSeleccionado.event_date);
+    
+    // Si el evento NO es hoy y el scanner está activo → pausar
+    if (!eventoEsHoy && qrScanner.current.getState() === Html5QrcodeScannerState.SCANNING) {
+      console.log('[Filtro] Evento no es hoy, pausando scanner');
+      safeCall(() => qrScanner.current.pause(), "pauseOnFilter");
+      setScanState(prev => ({
+        ...prev,
+        scanningPaused: true,
+        scannerState: Html5QrcodeScannerState.PAUSED
+      }));
+    }
+    
+    // Si el evento ES hoy y el scanner está pausado → reanudar
+    if (eventoEsHoy && qrScanner.current.getState() === Html5QrcodeScannerState.PAUSED) {
+      console.log('[Filtro] Evento es hoy, reanudando scanner');
+      safeCall(() => qrScanner.current.resume(), "resumeOnFilter");
+      setScanState(prev => ({
+        ...prev,
+        scanningPaused: false,
+        scannerState: Html5QrcodeScannerState.SCANNING
+      }));
+    }
+  }, [mostrarSoloHoy, eventoSeleccionado, isSameDay, safeCall]);
+
   // Efecto #1: Sincronización automática y manejo de visibilidad
   useEffect(() => {
     const controller = new AbortController();
@@ -925,76 +945,6 @@ const handleSync = useCallback(async () => {
     }
   }, [eventoSeleccionado?.event_id, loadAsistentes]);
 
-  // ✅ NUEVO: Render de estadísticas
-  const renderStats = () => (
-    <div className="stats-container">
-      <div className="stats-card">
-        <div className="stat-item">
-          <span className="stat-label">Total</span>
-          <span className="stat-value">{stats.total}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">✅ Escaneados</span>
-          <span className="stat-value" style={{ color: '#4CAF50' }}>{stats.escaneados}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">⏳ Pendientes</span>
-          <span className="stat-value" style={{ color: '#FF9800' }}>{stats.pendientes}</span>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ✅ NUEVO: Render de lista de asistentes
-  const renderAttendees = () => (
-    <div className="attendees-panel">
-      <h3>📋 Asistentes {mostrarSoloHoy ? '(Hoy)' : '(Todos)'}</h3>
-      
-      {asistentesMostrados.length === 0 ? (
-        <p className="no-attendees">No hay asistentes para mostrar</p>
-      ) : (
-        <>
-          <div className="attendees-list">
-            {asistentesMostrados.map((asistente) => (
-              <div key={asistente.id || asistente.ticket_code} className="attendee-item">
-                <div className="attendee-info">
-                  <span className="attendee-name">
-                    {asistente.name || asistente.email || 'Sin nombre'}
-                  </span>
-                  <span className="attendee-ticket">
-                    #{asistente.ticket_code?.slice(-6)}
-                  </span>
-                </div>
-                <div className="attendee-status">
-                  {asistente.status === 'SCANNED' ? (
-                    <span className="status-badge scanned">✅ Escaneado</span>
-                  ) : (
-                    <span className="status-badge pending">⏳ Pendiente</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          {stats.escaneados > 0 && (
-            <div className="progress-bar-container">
-              <div 
-                className="progress-bar" 
-                style={{ 
-                  width: `${(stats.escaneados / stats.total) * 100}%`,
-                  backgroundColor: '#4CAF50'
-                }}
-              />
-              <span className="progress-text">
-                {Math.round((stats.escaneados / stats.total) * 100)}% completado
-              </span>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-
   // Render del componente
   console.log('[ScanQR] Renderizando componente');
   return (
@@ -1018,6 +968,7 @@ const handleSync = useCallback(async () => {
         >
           <option value="" disabled>Seleccione un evento</option>
           
+          {/* ✅ NUEVO: Usar eventos filtrados */}
           {eventosMostrados.map(evt => (
             <option key={evt.event_id} value={evt.event_id}>
               {evt.event_title} ({evt.event_id})
@@ -1025,6 +976,7 @@ const handleSync = useCallback(async () => {
           ))}
         </select>
 
+        {/* ✅ NUEVO: Switch "Solo hoy" */}
         <div className="filter-controls">
           <label className="switch">
             <input
@@ -1035,19 +987,35 @@ const handleSync = useCallback(async () => {
             <span className="slider" />
           </label>
           <span className="switch-label">
-            {mostrarSoloHoy ? '📅 Solo hoy' : '📋 Todos'}
+            {mostrarSoloHoy ? '📅 Solo hoy' : '📋 Todos los eventos'}
           </span>
         </div>
+
+        {/* ✅ NUEVO: Contadores (esto era lo que pediste) */}
+        {eventoSeleccionado && (
+          <div className="counters-container">
+            <div className="counter-card">
+              <span className="counter-label">Total</span>
+              <span className="counter-value">{totalCount}</span>
+            </div>
+            <div className="counter-card">
+              <span className="counter-label">✅ Escaneados</span>
+              <span className="counter-value" style={{ color: '#4CAF50' }}>
+                {scannedCount}
+              </span>
+            </div>
+            <div className="counter-card">
+              <span className="counter-label">⏳ Pendientes</span>
+              <span className="counter-value" style={{ color: '#FF9800' }}>
+                {totalCount - scannedCount}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="scanner-wrapper">
           <div id="qr-reader" ref={qrRef} className="qr-scanner" />
         </div>
-
-        {/* ✅ NUEVO: Estadísticas en tiempo real */}
-        {stats.total > 0 && renderStats()}
-
-        {/* ✅ NUEVO: Lista de asistentes */}
-        {renderAttendees()}
 
         <div className="sync-button-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px' }}>
           <button
