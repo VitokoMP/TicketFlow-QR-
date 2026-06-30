@@ -759,6 +759,29 @@ export default function ScanQR() {
     }
   }, [eventoSeleccionado?.event_id, loadAsistentes]);
 
+  // Efecto #6: Si el filtro "Solo hoy" deja afuera al evento seleccionado,
+  // hay que limpiar la selección. Si no, el <select> queda "vacío" porque
+  // su value ya no calza con ninguna <option>, pero eventoSeleccionado
+  // en el estado sigue siendo el mismo, y los contadores (que dependen
+  // de eventoSeleccionado/asistentesDelEvento, no de eventosMostrados)
+  // se quedan pegados mostrando los datos del evento anterior.
+  useEffect(() => {
+    if (!eventoSeleccionado) return;
+
+    console.log('TIPO event_id seleccionado:', typeof eventoSeleccionado.event_id, '| valor:', eventoSeleccionado.event_id);
+    console.log('TIPO event_id en lista:', typeof eventosMostrados[0]?.event_id, '| valor:', eventosMostrados[0]?.event_id);
+    
+    const sigueVisible = eventosMostrados.some(
+      ev => ev.event_id === eventoSeleccionado.event_id
+    );
+    if (!sigueVisible) {
+      console.log('[filtroSoloHoy] Evento seleccionado ya no está en la lista filtrada, reseteando');
+      setEventoSeleccionado(null);
+      resetScannerState();
+      stopScanner();
+    }
+  }, [eventosMostrados, eventoSeleccionado, setEventoSeleccionado, resetScannerState, stopScanner]);
+
   // ==========================================
   // 🎨 RENDER
   // ==========================================
