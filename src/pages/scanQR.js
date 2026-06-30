@@ -567,13 +567,24 @@ export default function ScanQR() {
       const { success, attendees = [], message = '' } = await ScannerAPI.syncAttendees(eventId);
 
       if (success) {
-        setAsistentes(prev => ({
-          ...prev,
-          [eventId]: attendees.map(a => ({
-            ...a,
-            status: a.status ?? 'PENDING'
-          }))
-        }));
+        setAsistentes(prev => {
+  const actuales = prev[eventId] || [];
+  const map = new Map(actuales.map(a => [a.id, a]));
+
+  attendees.forEach(a => {
+    if (!map.has(a.id)) {
+      map.set(a.id, {
+        ...a,
+        status: a.status ?? 'PENDING'
+      });
+    }
+  });
+
+  return {
+    ...prev,
+    [eventId]: Array.from(map.values())
+  };
+});
         showToast(`Sincronizados ${attendees.length} asistentes`, 'success');
       } else {
         showToast(message || 'Error al sincronizar', 'error');
@@ -707,9 +718,19 @@ export default function ScanQR() {
 
         if (success && isMounted.current) {
           setAsistentes(prev => {
-            const prevAttendees = prev[eventId] || [];
-            if (JSON.stringify(prevAttendees) === JSON.stringify(attendees)) return prev;
-            return { ...prev, [eventId]: attendees };
+            const actuales = prev[eventId] || [];
+            const map = new Map(actuales.map(a => [a.id, a]));
+
+            attendees.forEach(a => {
+              if (!map.has(a.id)) {
+                map.set(a.id, a);
+              }
+            });
+
+            return {
+              ...prev,
+              [eventId]: Array.from(map.values())
+            };
           });
           lastSyncTimeRef.current = Date.now();
         }
