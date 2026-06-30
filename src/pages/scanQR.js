@@ -149,10 +149,20 @@ export default function ScanQR() {
     );
   }, []);
 
+  //filtro por el campo exacto en el array
   const eventosMostrados = useMemo(() => {
-    if (!mostrarSoloHoy) return eventos;
-    return eventos.filter(ev => isSameDay(ev.event_date));
-  }, [eventos, mostrarSoloHoy, isSameDay]);
+  if (!mostrarSoloHoy) return eventos;
+
+  const today = new Date().toISOString().split("T")[0];
+
+  return Array.isArray(eventos)
+    ? eventos.filter(ev => {
+        const date = ev?.event_start_date?.split(" ")[0];
+        return date === today;
+      })
+    : [];
+}, [eventos, mostrarSoloHoy]);
+
 
   // ✅ Contadores optimizados
   const totalCount = asistentesDelEvento.length;
