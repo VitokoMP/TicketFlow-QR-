@@ -258,8 +258,8 @@ export default function ScanQR() {
     diagLog('QR_DETECTED', { ticket: normalizedTicket?.substring(0, 30) });
 
     if (!normalizedTicket) {
-      releaselock();
-      return;
+        await releaseScannerAfterOverlay();
+        return;
     }
 
     try {
