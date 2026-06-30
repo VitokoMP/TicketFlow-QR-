@@ -19,6 +19,46 @@ const SYNC_INTERVAL_MS = 300_000; // 5 min
 const SYNC_BUTTON_COOLDOWN_MS = 20_000;
 
 // ==========================================
+// 📅 UTILIDADES DE FECHA (modelo nuevo: event_start_date / event_end_date)
+// ==========================================
+// El backend entrega "2026-06-30 19:15:00" (sin timezone). Si lo pasamos
+// directo a `new Date()`, algunos navegadores lo interpretan distinto
+// (Safari puede fallar; Chrome lo trata como hora LOCAL, no UTC).
+// Forzamos el formato ISO local agregando la "T" para que el comportamiento
+// sea consistente entre navegadores, y se interprete como hora local
+// (que es lo correcto, asumiendo que el backend ya manda hora de Santiago).
+function parseEventDate(dateStr) {
+  if (!dateStr) return null;
+  const parsed = new Date(dateStr.replace(' ', 'T'));
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isToday(dateStr) {
+  const d = parseEventDate(dateStr);
+  if (!d) return false;
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth()    === now.getMonth()    &&
+    d.getDate()     === now.getDate()
+  );
+}
+
+// Disponible para usar en UI o validaciones futuras (ver nota al inicio de la
+// respuesta: esta lógica no existía en el componente original).
+// Reglas: futuro -> now < start | en curso -> start <= now <= end | terminado -> now > end
+function getEventStatus(evento) {
+  const start = parseEventDate(evento?.event_start_date);
+  const end   = parseEventDate(evento?.event_end_date);
+  if (!start || !end) return 'unknown';
+
+  const now = new Date();
+  if (now < start) return 'future';
+  if (now > end)   return 'ended';
+  return 'ongoing';
+}
+
+// ==========================================
 // 🔍 DIAGNÓSTICO: Buffer circular en memoria
 // ==========================================
 const DIAG_BUFFER_MAX = 200;
@@ -95,21 +135,12 @@ export default function ScanQR() {
   // ==========================================
   // 🧮 DATOS DERIVADOS
   // ==========================================
-  const isSameDay = useCallback((dateStr) => {
-    if (!dateStr) return false;
-    const d   = new Date(dateStr);
-    const now = new Date();
-    return (
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth()    === now.getMonth()    &&
-      d.getDate()     === now.getDate()
-    );
-  }, []);
-
+  // ✅ Migrado a event_start_date. isToday/parseEventDate viven fuera del
+  // componente porque no dependen de props/estado (evita recrearlos en cada render).
   const eventosMostrados = useMemo(() => {
     if (!mostrarSoloHoy) return eventos;
-    return eventos.filter(ev => isSameDay(ev.event_date));
-  }, [eventos, mostrarSoloHoy, isSameDay]);
+    return eventos.filter(ev => isToday(ev.event_start_date));
+  }, [eventos, mostrarSoloHoy]);
 
   const asistentesDelEvento = useMemo(() => {
     if (!eventoSeleccionado?.event_id) return [];
