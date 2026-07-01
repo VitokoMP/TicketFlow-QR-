@@ -647,12 +647,14 @@ export default function ScanQR() {
           </button>
 
           <button
-            className="sync-button"
-            onClick={() => window.__downloadDiagLogs?.()}
-            style={{ backgroundColor: '#666', color: '#fff' }}
-          >
-            📥 Descargar Logs de Diagnóstico
-          </button>
+  className="sync-button icon-button"
+  onClick={() => window.__downloadDiagLogs?.()}
+  title="Descargar Logs de Diagnóstico"
+  aria-label="Descargar Logs de Diagnóstico"
+  style={{ backgroundColor: '#666', color: '#fff' }}
+>
+  🕷️
+</button>
         </div>
       </div>
 
