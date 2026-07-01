@@ -95,7 +95,6 @@ export default function ScanQR() {
     validarTicket,
     setLoading,
     setEventoSeleccionado,
-    updateAsistenteStatus,
     loadAsistentes,
   } = contexto;
 
@@ -296,11 +295,11 @@ export default function ScanQR() {
     try {
       diagLog('VALIDATION_START', { eventId: eventoSeleccionado.event_id, ticket: normalizedTicket });
 
+      // ✅ NOTA: no llamamos a updateAsistenteStatus acá — validarTicket() ya lo hace
+      // internamente con los argumentos correctos (asistente.id, 'SCANNED'). La llamada
+      // que existía antes pasaba eventoSeleccionado.event_id como si fuera el id del
+      // asistente, lo que inyectaba un asistente fantasma y descuadraba el contador Total.
       const result = await validarTicket(eventoSeleccionado.event_id, normalizedTicket);
-
-      if (result.type === 'valid' && result.asistente) {
-        updateAsistenteStatus(eventoSeleccionado.event_id, result.asistente.id, 'SCANNED');
-      }
 
       showValidationOverlay({
         status:    result.type,
@@ -313,7 +312,7 @@ export default function ScanQR() {
       console.error('[scan] Error crítico:', error);
       showValidationOverlay({ status: 'error', mensaje: error.message || 'Error inesperado' });
     }
-  }, [eventoSeleccionado, validarTicket, updateAsistenteStatus]);
+  }, [eventoSeleccionado, validarTicket]);
 
   // Mantener ref siempre actualizada (sin nunca recrear el scanner)
   useEffect(() => {
