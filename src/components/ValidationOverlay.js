@@ -11,9 +11,6 @@ export default function ValidationOverlay({ status, asistente, onValidate, onClo
 
         {asistente && (
           <div className="asistente-info">
-            <p><strong>Nombre:</strong> {asistente.name || asistente.full_name || '-'}</p>
-            <p><strong>Ticket:</strong> {asistente.ticket_type || asistente.ticket_name || '-'}</p>
-            <p><strong>Código:</strong> {asistente.ticket_code || asistente.code || '-'}</p>
             {asistente.status && <p><strong>Estado:</strong> {asistente.status}</p>}
           </div>
         )}
