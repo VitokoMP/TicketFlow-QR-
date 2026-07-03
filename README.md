@@ -2,6 +2,10 @@
 
 A WordPress plugin that allows ticket validation using QR codes, event and attendee synchronization, and a modern interface built with React.
 
+# Visit
+
+http://demo-escaner-qr.netlify.app/
+
 ---
 
 ## 🚀 Key Features
