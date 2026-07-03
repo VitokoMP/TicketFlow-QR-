@@ -453,6 +453,14 @@ class TicketFlow_REST_API {
             */ 
 
             public function mep_sincronizar_eventos_y_asistentes() {
+
+            if (get_transient('sync_lock')) {
+        return new WP_REST_Response([
+            'success' => false,
+            'message' => 'Sincronización ya en progreso'
+        ], 429);
+    }
+    set_transient('sync_lock', 1, 60);
                 $eventos_insertados = []; // Añade esto al inicio de tu función
                 error_log('Entrando en la función mep_sincronizar_eventos_y_asistentes');
 
@@ -730,7 +738,6 @@ class TicketFlow_REST_API {
 
             public function ticketflow_sync_and_get_attendees($request) {
                 $event_id = 0;
-
                 if (is_object($request) && method_exists($request, 'get_param')) {
                     $event_id = intval($request->get_param('event_id'));
                 } elseif (is_array($request) && isset($request['event_id'])) {
@@ -741,17 +748,11 @@ class TicketFlow_REST_API {
                     return new WP_Error('invalid_event_id', 'ID de evento no válido', ['status' => 400]);
                 }
 
-                // Sincronizar asistentes (recibe array)
-                $inserted = $this->sync_attendees_to_scans_table([$event_id]);
-
-                // Obtener asistentes para ese evento, aquí sí con array
                 $attendees = $this->get_attendees_for_events([$event_id]);
 
-                // Retornar respuesta REST
                 return rest_ensure_response([
                     'success' => true,
                     'event_id' => $event_id,
-                    'inserted' => $inserted,
                     'total' => count($attendees),
                     'attendees' => $attendees,
                 ]);
