@@ -137,7 +137,7 @@ export default function ScanQR() {
   // componente porque no dependen de props/estado (evita recrearlos en cada render).
   const eventosMostrados = useMemo(() => {
     if (!mostrarSoloHoy) return eventos;
-    return eventos.filter(ev => isToday(ev.event_start_date) || getEventStatus(ev) === 'en curso');
+    return eventos.filter(ev => isToday(ev.event_start_date) || getEventStatus(ev) === 'ongoing');
   }, [eventos, mostrarSoloHoy]);
 
   const asistentesDelEvento = useMemo(() => {
