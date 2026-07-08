@@ -95,7 +95,6 @@ export default function ScanQR() {
     validarTicket,
     setLoading,
     setEventoSeleccionado,
-    loadAsistentes,
   } = contexto;
 
   const setAsistentes = useCallback(
@@ -138,7 +137,7 @@ export default function ScanQR() {
   // componente porque no dependen de props/estado (evita recrearlos en cada render).
   const eventosMostrados = useMemo(() => {
     if (!mostrarSoloHoy) return eventos;
-    return eventos.filter(ev => isToday(ev.event_start_date));
+    return eventos.filter(ev => isToday(ev.event_start_date) || getEventStatus(ev) === 'en curso');
   }, [eventos, mostrarSoloHoy]);
 
   const asistentesDelEvento = useMemo(() => {
@@ -428,9 +427,9 @@ export default function ScanQR() {
   // ==========================================
   const handleEventoChange = useCallback((selectedEvent) => {
     setEventoSeleccionado(selectedEvent);
-    loadAsistentes(selectedEvent.event_id);
+     runSync(String(selectedEvent.event_id));
     closeOverlay();
-  }, [setEventoSeleccionado, loadAsistentes, closeOverlay]);
+  }, [setEventoSeleccionado, runSync, closeOverlay]);
 
   // ==========================================
   // 🎯 EFFECTS — unificados y sin conflictos
