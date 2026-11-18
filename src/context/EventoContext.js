@@ -49,7 +49,8 @@ export const EventoProvider = ({ children }) => {
   const syncBufferRef = useRef([]);
   const syncTimerRef = useRef(null);
   const retryCountRef = useRef(0);
-
+  const isOnlineRef = useRef(navigator.onLine);
+  const isSyncingRef = useRef(false);
   // -----------------------
   // Debugs de estado
   // -----------------------
@@ -85,6 +86,10 @@ export const EventoProvider = ({ children }) => {
     };
   }, []);
 
+  useEffect(() => {
+      isOnlineRef.current = isOnline;
+  }, [isOnline]);
+  // ----------------------
   // Persistir cambios
   useEffect(() => {
   if (Object.keys(asistentes).length > 0) {
