@@ -4,6 +4,31 @@ import { toast } from 'react-toastify';
 
 const EventoContext = createContext();
 
+// -----------------------
+// Funciones auxiliares
+// -----------------------
+
+const makeUuid = () =>
+  (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+
+const getDeviceId = () => {
+  try {
+    let id = localStorage.getItem('ticketflow_device_id');
+    if (!id) {
+      id = makeUuid();
+      localStorage.setItem('ticketflow_device_id', id);
+    }
+    return id;
+  } catch {
+    return 'unknown-device';
+  }
+};
+
 export function useEvento() {
   const context = useContext(EventoContext);
   if (!context) throw new Error("useEvento debe usarse dentro de EventoProvider");
