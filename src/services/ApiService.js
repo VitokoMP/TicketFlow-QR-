@@ -1,8 +1,8 @@
 // Base API configuration
 //const API_BASE_URL = '/wordpress/wp-json/ticketflow/v1';
 // ✅ MEJOR (usa lo que WordPress genera)
-const API_BASE_URL = `${wpApiSettings?.root || '/wp-json/'}ticketflow/v1`.replace(/\/$/, '');
-
+const API_BASE_URL = `${window.wpApiSettings?.root || '/wp-json/'}ticketflow/v1`.replace(/\/$/, '');
+// Nonce actual (para autenticación)
 let currentNonce = window.ticketflowData?.nonce || '';
 
 // Helper para respuestas consistentes
