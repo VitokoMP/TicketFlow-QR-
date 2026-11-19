@@ -4,31 +4,6 @@ import { toast } from 'react-toastify';
 
 const EventoContext = createContext();
 
-// -----------------------
-// Funciones auxiliares
-// -----------------------
-
-const makeUuid = () =>
-  (typeof crypto !== 'undefined' && crypto.randomUUID)
-    ? crypto.randomUUID()
-    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-        const r = Math.random() * 16 | 0;
-        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-      });
-
-const getDeviceId = () => {
-  try {
-    let id = localStorage.getItem('ticketflow_device_id');
-    if (!id) {
-      id = makeUuid();
-      localStorage.setItem('ticketflow_device_id', id);
-    }
-    return id;
-  } catch {
-    return 'unknown-device';
-  }
-};
-
 export function useEvento() {
   const context = useContext(EventoContext);
   if (!context) throw new Error("useEvento debe usarse dentro de EventoProvider");
@@ -49,8 +24,7 @@ export const EventoProvider = ({ children }) => {
   const syncBufferRef = useRef([]);
   const syncTimerRef = useRef(null);
   const retryCountRef = useRef(0);
-  const isOnlineRef = useRef(navigator.onLine);
-  const isSyncingRef = useRef(false);
+
   // -----------------------
   // Debugs de estado
   // -----------------------
@@ -66,24 +40,19 @@ export const EventoProvider = ({ children }) => {
   // Montaje / Desmontaje
   // -----------------------
   useEffect(() => {
-    //    localStorage.removeItem('ticketflow_asistentes');
+//    localStorage.removeItem('ticketflow_asistentes');
     const savedBuffer = localStorage.getItem('ticketflow_pending_scans');
     if (savedBuffer) syncBufferRef.current = JSON.parse(savedBuffer);
 
     const handleOnline = () => {
-      isOnlineRef.current = true;
       setIsOnline(true);
       if (syncBufferRef.current.length > 0) syncBuffer();
     };
-
-    const handleOffline = () => {
-      isOnlineRef.current = false;
-      setIsOnline(false);
-    };
-
+    const handleOffline = () => setIsOnline(false);
+    
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
+    
     return () => {
       isMounted.current = false;
       window.removeEventListener('online', handleOnline);
@@ -91,10 +60,6 @@ export const EventoProvider = ({ children }) => {
     };
   }, []);
 
-  useEffect(() => {
-      isOnlineRef.current = isOnline;
-  }, [isOnline]);
-  // ----------------------
   // Persistir cambios
   useEffect(() => {
   if (Object.keys(asistentes).length > 0) {
@@ -212,53 +177,28 @@ useEffect(() => {
 
   }, [isOnline]);
 
-const syncBuffer = useCallback(async () => {
-  if (
-    !isOnlineRef.current ||
-    isSyncingRef.current ||
-    syncBufferRef.current.length === 0
-  ) return;
+  const syncBuffer = useCallback(async () => {
+    if (!isOnline || syncBufferRef.current.length === 0) return;
 
-  const bufferSnapshot = [...syncBufferRef.current];
-  const snapshotSet = new Set(bufferSnapshot);
-  const ticketIds = [...new Set(bufferSnapshot.map(item => item.ticket_id))];
+    try {
+      const bufferCopy = [...syncBufferRef.current];
+      const ticketIds = [...new Set(bufferCopy.map(item => item.ticket_id))];
 
-  if (ticketIds.length === 0) return;
+      console.log(`[SyncBuffer] ${ticketIds.length} escaneos únicos a sincronizar:`, ticketIds);
 
-  isSyncingRef.current = true;
+      const response = await ScannerAPI.markMultipleAsScanned(ticketIds);
 
-  try {
-    console.log(`[SyncBuffer] ${ticketIds.length} escaneos únicos a sincronizar:`, ticketIds);
-
-    const response = await ScannerAPI.markMultipleAsScanned(ticketIds);
-    const ok = response?.success && response?.data?.success === true;
-
-    if (ok) {
-      syncBufferRef.current = syncBufferRef.current.filter(
-        item => !snapshotSet.has(item)
-      );
-
-      localStorage.setItem(
-        'ticketflow_pending_scans',
-        JSON.stringify(syncBufferRef.current)
-      );
-
-      const dup = response.data.already_scanned || [];
-
-      if (dup.length) {
-        console.warn('[SyncBuffer] Ya escaneados en servidor:', dup);
+      if (response.success) {
+        syncBufferRef.current = [];
+        localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
+        console.log(`[SyncBuffer] ${ticketIds.length} escaneos sincronizados`);
+      } else {
+        console.warn('[SyncBuffer] Falló la sincronización:', response.message);
       }
-
-      console.log(`[SyncBuffer] ${ticketIds.length} escaneos sincronizados`);
-    } else {
-      console.warn('[SyncBuffer] Falló la sincronización:', response?.message || response?.data?.message);
+    } catch (error) {
+      console.error('[SyncBuffer] Error sincronizando buffer', error);
     }
-  } catch (error) {
-    console.error('[SyncBuffer] Error sincronizando buffer', error);
-  } finally {
-    isSyncingRef.current = false;
-  }
-}, []);
+  }, [isOnline]);
 
 const validarTicket = useCallback((eventId, ticketCode) => {
   const normalizedEventId = String(eventId);
@@ -290,12 +230,10 @@ const validarTicket = useCallback((eventId, ticketCode) => {
 
   updateAsistenteStatus(asistente.id, 'SCANNED');
   
-  syncBufferRef.current.push({
-    scan_uuid: makeUuid(),
-    device_id: getDeviceId(),
-    ticket_id: String(asistente.id),
-    event_id: normalizedEventId,
-    status: 'SCANNED',
+  syncBufferRef.current.push({ 
+    ticket_id: String(asistente.id), 
+    event_id: normalizedEventId, 
+    status: 'SCANNED', 
     source: 'local',
     scanned_at: new Date().toISOString()
   });

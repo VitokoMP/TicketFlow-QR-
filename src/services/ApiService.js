@@ -16,15 +16,7 @@ const buildResponse = (success, data = null, message = '') => ({
 /**
  * Secure fetch wrapper mejorado
  */
-export const secureFetch = async (endpoint, method = 'GET', body = null, timeoutMs = 15000) => {
-  const controller = new AbortController();
-  let timeoutTriggered = false;
-
-  const timeoutId = setTimeout(() => {
-    timeoutTriggered = true;
-    controller.abort();
-  }, timeoutMs);
-
+export const secureFetch = async (endpoint, method = 'GET', body = null) => {
   const headers = {
     'Content-Type': 'application/json',
     'X-WP-Nonce': currentNonce,
@@ -34,39 +26,19 @@ export const secureFetch = async (endpoint, method = 'GET', body = null, timeout
     method,
     headers,
     credentials: 'include',
-    body: body ? JSON.stringify(body) : null,
-    signal: controller.signal
+    body: body ? JSON.stringify(body) : null
   };
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-
+    
     // Manejo de nonce expirado
     if (response.status === 403) {
-      const nonceResponse = await fetch(`${API_BASE_URL}/get-nonce`, {
-        signal: controller.signal
-      });
-
-      if (!nonceResponse.ok) {
-        throw new Error(`Error al renovar nonce: ${nonceResponse.status}`);
-      }
-
+      const nonceResponse = await fetch(`${API_BASE_URL}/get-nonce`);
       const { nonce } = await nonceResponse.json();
-
-      if (!nonce) {
-        throw new Error('No se pudo obtener un nuevo nonce');
-      }
-
       currentNonce = nonce;
       headers['X-WP-Nonce'] = nonce;
-
       const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, config);
-
-      if (!retryResponse.ok) {
-        const errorData = await retryResponse.json().catch(() => ({}));
-        throw new Error(errorData.message || `Error ${retryResponse.status}`);
-      }
-
       const retryData = await retryResponse.json();
       return buildResponse(true, retryData);
     }
@@ -78,17 +50,9 @@ export const secureFetch = async (endpoint, method = 'GET', body = null, timeout
 
     const data = await response.json();
     return buildResponse(true, data);
-
   } catch (error) {
-    const message = timeoutTriggered
-      ? `Tiempo de espera agotado (${timeoutMs} ms)`
-      : error.message;
-
-    console.error('API Error:', message);
-    return buildResponse(false, null, message);
-
-  } finally {
-    clearTimeout(timeoutId);
+    console.error('API Error:', error);
+    return buildResponse(false, null, error.message);
   }
 };
 
