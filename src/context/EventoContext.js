@@ -66,19 +66,24 @@ export const EventoProvider = ({ children }) => {
   // Montaje / Desmontaje
   // -----------------------
   useEffect(() => {
-//    localStorage.removeItem('ticketflow_asistentes');
+    //    localStorage.removeItem('ticketflow_asistentes');
     const savedBuffer = localStorage.getItem('ticketflow_pending_scans');
     if (savedBuffer) syncBufferRef.current = JSON.parse(savedBuffer);
 
     const handleOnline = () => {
+      isOnlineRef.current = true;
       setIsOnline(true);
       if (syncBufferRef.current.length > 0) syncBuffer();
     };
-    const handleOffline = () => setIsOnline(false);
-    
+
+    const handleOffline = () => {
+      isOnlineRef.current = false;
+      setIsOnline(false);
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    
+
     return () => {
       isMounted.current = false;
       window.removeEventListener('online', handleOnline);
@@ -207,28 +212,53 @@ useEffect(() => {
 
   }, [isOnline]);
 
-  const syncBuffer = useCallback(async () => {
-    if (!isOnline || syncBufferRef.current.length === 0) return;
+const syncBuffer = useCallback(async () => {
+  if (
+    !isOnlineRef.current ||
+    isSyncingRef.current ||
+    syncBufferRef.current.length === 0
+  ) return;
 
-    try {
-      const bufferCopy = [...syncBufferRef.current];
-      const ticketIds = [...new Set(bufferCopy.map(item => item.ticket_id))];
+  const bufferSnapshot = [...syncBufferRef.current];
+  const snapshotSet = new Set(bufferSnapshot);
+  const ticketIds = [...new Set(bufferSnapshot.map(item => item.ticket_id))];
 
-      console.log(`[SyncBuffer] ${ticketIds.length} escaneos únicos a sincronizar:`, ticketIds);
+  if (ticketIds.length === 0) return;
 
-      const response = await ScannerAPI.markMultipleAsScanned(ticketIds);
+  isSyncingRef.current = true;
 
-      if (response.success) {
-        syncBufferRef.current = [];
-        localStorage.setItem('ticketflow_pending_scans', JSON.stringify(syncBufferRef.current));
-        console.log(`[SyncBuffer] ${ticketIds.length} escaneos sincronizados`);
-      } else {
-        console.warn('[SyncBuffer] Falló la sincronización:', response.message);
+  try {
+    console.log(`[SyncBuffer] ${ticketIds.length} escaneos únicos a sincronizar:`, ticketIds);
+
+    const response = await ScannerAPI.markMultipleAsScanned(ticketIds);
+    const ok = response?.success && response?.data?.success === true;
+
+    if (ok) {
+      syncBufferRef.current = syncBufferRef.current.filter(
+        item => !snapshotSet.has(item)
+      );
+
+      localStorage.setItem(
+        'ticketflow_pending_scans',
+        JSON.stringify(syncBufferRef.current)
+      );
+
+      const dup = response.data.already_scanned || [];
+
+      if (dup.length) {
+        console.warn('[SyncBuffer] Ya escaneados en servidor:', dup);
       }
-    } catch (error) {
-      console.error('[SyncBuffer] Error sincronizando buffer', error);
+
+      console.log(`[SyncBuffer] ${ticketIds.length} escaneos sincronizados`);
+    } else {
+      console.warn('[SyncBuffer] Falló la sincronización:', response?.message || response?.data?.message);
     }
-  }, [isOnline]);
+  } catch (error) {
+    console.error('[SyncBuffer] Error sincronizando buffer', error);
+  } finally {
+    isSyncingRef.current = false;
+  }
+}, []);
 
 const validarTicket = useCallback((eventId, ticketCode) => {
   const normalizedEventId = String(eventId);
