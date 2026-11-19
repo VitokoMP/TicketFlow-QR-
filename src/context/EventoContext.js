@@ -290,10 +290,12 @@ const validarTicket = useCallback((eventId, ticketCode) => {
 
   updateAsistenteStatus(asistente.id, 'SCANNED');
   
-  syncBufferRef.current.push({ 
-    ticket_id: String(asistente.id), 
-    event_id: normalizedEventId, 
-    status: 'SCANNED', 
+  syncBufferRef.current.push({
+    scan_uuid: makeUuid(),
+    device_id: getDeviceId(),
+    ticket_id: String(asistente.id),
+    event_id: normalizedEventId,
+    status: 'SCANNED',
     source: 'local',
     scanned_at: new Date().toISOString()
   });
