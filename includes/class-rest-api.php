@@ -8,10 +8,10 @@ class TicketFlow_REST_API {
         }
         return self::$instance;
     }
-    
+
     private function __construct() {
         add_action('rest_api_init', [$this, 'register_routes']);
-        
+
             // Endpoint para mantener sesión
 
         add_action('wp_ajax_ticketflow_heartbeat', [$this, 'heartbeat']);
@@ -93,7 +93,7 @@ class TicketFlow_REST_API {
 
 
     public function register_routes() {
-        
+
          register_rest_route('ticketflow/v1', '/bulk-mark-scanned', [
         'methods' => 'POST',
         'callback' => [ $this, 'mark_multiple_as_scanned' ],
@@ -119,7 +119,7 @@ class TicketFlow_REST_API {
             'callback' => [$this, 'get_nonce'],
             'permission_callback' => '__return_true'
         ]);
-        
+
         register_rest_route('ticketflow/v1', '/stats', [
             'methods'  => 'GET',
             'callback' => function($request) {
@@ -189,7 +189,7 @@ class TicketFlow_REST_API {
            // },
         'permission_callback' => '__return_true' // ajusta según seguridad
         ]);
-        
+
         // Registrar la ruta para obtener eventos activos--ok
         register_rest_route('ticketflow/v1', '/eventos-activos', [
             'methods' => 'GET',
@@ -243,7 +243,7 @@ class TicketFlow_REST_API {
            // 'permission_callback' => function() {
             //return current_user_can('ticketflow_scan_qr') || current_user_can('ticketflow_export_qr');
            // },
-        ]); 
+        ]);
     }
 
     // Mover aquí todas tus funciones de callback para los endpoints
@@ -272,24 +272,24 @@ class TicketFlow_REST_API {
         // Tu lógica de endpoint aquí
         return new WP_REST_Response(['success' => true], 200);
     }
-    
+
     function ticketflow_redirigir_escaneadores() {
     if (current_user_can('escaneador') && !defined('DOING_AJAX')) {
                 $allowed_pages = ['wprk-settings', 'profile.php'];
                 $current_page = $_GET['page'] ?? '';
-                
+
                 if (!in_array($current_page, $allowed_pages)) {
                     wp_redirect(admin_url('admin.php?page=wprk-settings'));
                     exit;
                 }
-            } 
+            }
                 if (current_user_can('escaneador')) {
                 error_log('Capacidades del escaneador: ' . print_r(wp_get_current_user()->allcaps, true));
             }
-        
+
                 if (current_user_can('escaneador')) {
             error_log('El usuario tiene rol escaneador');
-            
+
             if (current_user_can('manage_wprk_plugin')) {
                 error_log('El usuario tiene la capacidad manage_wprk_plugin');
             }
@@ -304,8 +304,8 @@ class TicketFlow_REST_API {
 
     }
 
-            //Obtengo los asistentes a evento segun seleccion 
-    public function mep_get_asistentes_by_event_ids(WP_REST_Request $request) { 
+            //Obtengo los asistentes a evento segun seleccion
+    public function mep_get_asistentes_by_event_ids(WP_REST_Request $request) {
                     $event_ids = (array) $request->get_param('event_ids');
 
                     if (empty($event_ids)) {
@@ -323,77 +323,163 @@ class TicketFlow_REST_API {
 
                     return rest_ensure_response(['asistentes' => $agrupado]);
                 }
-                
-                    public function mark_as_scanned($request) {
-                    global $wpdb;
-                    $table = $wpdb->prefix . 'ticketflow_scans';
-                    $id = intval($request['id']);
-
-                    // Iniciar transacción
-                    $wpdb->query('START TRANSACTION;');
-
-                    // Bloquear fila para evitar race conditions
-                    $asistente = $wpdb->get_row($wpdb->prepare("
-                        SELECT id, scan_status, scan_time, user_id 
-                        FROM $table 
-                        WHERE id = %d FOR UPDATE
-                    ", $id), ARRAY_A);
-
-                    if (!$asistente) {
-                        $wpdb->query('ROLLBACK;');
-                        return new WP_REST_Response([
-                            'success' => false,
-                            'status' => 'NOT_FOUND',
-                            'mensaje' => 'No se encontró el asistente con ese ID.'
-                        ], 404);
-                    }
-
-                    if ($asistente['scan_status'] !== 'pending') {
-                        $wpdb->query('ROLLBACK;');
-                        return new WP_REST_Response([
-                            'success' => false,
-                            'status' => 'ALREADY_SCANNED',
-                            'mensaje' => 'Este asistente ya fue validado anteriormente.',
-                            'asistente' => $asistente
-                        ], 200);
-                    }
-
-                    // Marcar como escaneado
-                    $asistente['scan_status'] = 'scanned';
-                    $asistente['scan_time']   = current_time('mysql');
-
-                    $update = $wpdb->update(
-                        $table,
-                        [
-                            'scan_status' => $asistente['scan_status'],
-                            'scan_time'   => $asistente['scan_time']
-                        ],
-                        ['id' => $id],
-                        ['%s','%s'],
-                        ['%d']
-                    );
-
-                    if ($update === false) {
-                        $wpdb->query('ROLLBACK;');
-                        return new WP_REST_Response([
-                            'success' => false,
-                            'status' => 'ERROR',
-                            'mensaje' => 'Error al actualizar el estado en la base de datos.'
-                        ], 500);
-                    }
-
-                    // Confirmar cambios
-                    $wpdb->query('COMMIT;');
-
-                    return new WP_REST_Response([
-                        'success' => true,
-                        'status' => 'UPDATED',
-                        'mensaje' => 'Asistente marcado como escaneado.',
-                        'asistente' => $asistente
-                    ], 200);
-                }
 
 
+    public function mark_as_scanned($request) {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'ticketflow_scans';
+        $events_table = $wpdb->prefix . 'ticketflow_scan_events';
+        $id = absint($request['id']);
+
+        if ($id <= 0) {
+            return new WP_REST_Response([
+                'success' => false,
+                'status' => 'ERROR',
+                'mensaje' => 'ID de asistente no válido.'
+            ], 400);
+        }
+
+        // Iniciar transacción.
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_REST_Response([
+                'success' => false,
+                'status' => 'ERROR',
+                'mensaje' => 'No se pudo iniciar la transacción.'
+            ], 500);
+        }
+
+        try {
+            // 1. Bloquear y recuperar el asistente.
+            $asistente = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT id, ticket_id, event_id, scan_status, scan_time, user_id
+                    FROM $table
+                    WHERE id = %d
+                    FOR UPDATE",
+                    $id
+                ),
+                ARRAY_A
+            );
+
+            if (!$asistente) {
+                $wpdb->query('ROLLBACK');
+
+                return new WP_REST_Response([
+                    'success' => false,
+                    'status' => 'NOT_FOUND',
+                    'mensaje' => 'No se encontró el asistente con ese ID.'
+                ], 404);
+            }
+
+            // 2. Evitar registrar nuevamente un ticket escaneado.
+            if ($asistente['scan_status'] !== 'pending') {
+                $wpdb->query('ROLLBACK');
+
+                unset($asistente['ticket_id'], $asistente['event_id']);
+
+                return new WP_REST_Response([
+                    'success' => false,
+                    'status' => 'ALREADY_SCANNED',
+                    'mensaje' => 'Este asistente ya fue validado anteriormente.',
+                    'asistente' => $asistente
+                ], 200);
+            }
+
+            // 3. Validar identificadores.
+            if (
+                (int) $asistente['ticket_id'] <= 0 ||
+                (int) $asistente['event_id'] <= 0
+            ) {
+                throw new Exception(
+                    'Ticket sin identificador de asistente o evento válido.'
+                );
+            }
+
+            $scan_time = current_time('mysql');
+            $server_received_at = current_time('mysql', true);
+
+            // 4. Actualizar el estado del ticket.
+            $update = $wpdb->update(
+                $table,
+                [
+                    'scan_status' => 'scanned',
+                    'scan_time' => $scan_time
+                ],
+                ['id' => $id],
+                ['%s', '%s'],
+                ['%d']
+            );
+
+            if ($update !== 1) {
+                throw new Exception(
+                    'Error al actualizar el estado del ticket.'
+                );
+            }
+
+            // 5. Registrar el evento de escaneo.
+            $inserted = $wpdb->insert(
+                $events_table,
+                [
+                    'scan_uuid' => wp_generate_uuid4(),
+                    'attendee_id' => (int) $asistente['ticket_id'],
+                    'event_id' => (int) $asistente['event_id'],
+                    'device_id' => null,
+                    'scanned_at' => null,
+                    'server_received_at' => $server_received_at,
+                    'outcome' => 'accepted'
+                ],
+                [
+                    '%s',
+                    '%d',
+                    '%d',
+                    '%s',
+                    '%s',
+                    '%s',
+                    '%s'
+                ]
+            );
+
+            if ($inserted === false) {
+                throw new Exception(
+                    'Error al registrar el evento de escaneo.'
+                );
+            }
+
+            // 6. Confirmar ambas operaciones.
+            if ($wpdb->query('COMMIT') === false) {
+                throw new Exception(
+                    'Error al confirmar la transacción.'
+                );
+            }
+
+            // Mantener la estructura de respuesta anterior.
+            $asistente['scan_status'] = 'scanned';
+            $asistente['scan_time'] = $scan_time;
+
+            unset($asistente['ticket_id'], $asistente['event_id']);
+
+            return new WP_REST_Response([
+                'success' => true,
+                'status' => 'UPDATED',
+                'mensaje' => 'Asistente marcado como escaneado.',
+                'asistente' => $asistente
+            ], 200);
+
+        } catch (Throwable $e) {
+            $wpdb->query('ROLLBACK');
+
+            error_log(
+                '[TicketFlow] Error en mark_as_scanned: ' . $e->getMessage()
+            );
+
+            return new WP_REST_Response([
+                'success' => false,
+                'status' => 'ERROR',
+                'mensaje' => 'Error en la transacción de escaneo.'
+            ], 500);
+        }
+    }
 
                 /**function get_scan_status_by_qr($qr_code) {
                     Estoy realizandola conexion con los asistentes.
@@ -450,7 +536,7 @@ class TicketFlow_REST_API {
              * Sabremos cuidar lo que nos importa, aca avanzamos para organizar los estados.
             * MAntenga el foco
 
-            */ 
+            */
 
             public function mep_sincronizar_eventos_y_asistentes() {
 
@@ -470,23 +556,23 @@ class TicketFlow_REST_API {
             //esta query hace un delete de los registros duplicados
                 $wpdb->query("
                 DELETE t1 FROM {$wpdb->prefix}ticketflow_scans t1
-                INNER JOIN {$wpdb->prefix}ticketflow_scans t2 
-                ON t1.event_id = t2.event_id 
+                INNER JOIN {$wpdb->prefix}ticketflow_scans t2
+                ON t1.event_id = t2.event_id
                 AND t1.event_start_date < t2.event_start_date
-                WHERE t1.tipo = 'evento' 
+                WHERE t1.tipo = 'evento'
                 AND t2.tipo = 'evento'");
 
                 // Obtener eventos
                 $events = $wpdb->get_results("
-                    SELECT 
-                        p.ID AS event_id, 
-                        p.post_title AS title, 
-                        start_meta.meta_value AS start_datetime, 
+                    SELECT
+                        p.ID AS event_id,
+                        p.post_title AS title,
+                        start_meta.meta_value AS start_datetime,
                         end_meta.meta_value AS end_datetime
                     FROM {$wpdb->prefix}posts AS p
-                    LEFT JOIN {$wpdb->prefix}postmeta start_meta 
+                    LEFT JOIN {$wpdb->prefix}postmeta start_meta
                         ON p.ID = start_meta.post_id AND start_meta.meta_key = 'event_start_datetime'
-                    LEFT JOIN {$wpdb->prefix}postmeta end_meta 
+                    LEFT JOIN {$wpdb->prefix}postmeta end_meta
                         ON p.ID = end_meta.post_id AND end_meta.meta_key = 'event_end_datetime'
                     WHERE p.post_type = 'mep_events'
                     ORDER BY start_meta.meta_value ASC
@@ -494,8 +580,8 @@ class TicketFlow_REST_API {
             //como puedo ver los eventos insertados? ycomo obetener la asociacion de campos desde el select hacia react.
             //    $eventos_insertados = [];
                 // Verificar si se encontraron eventos
-                //en el desarrollo de esta funcion. 
-                /** 
+                //en el desarrollo de esta funcion.
+                /**
                  */
                     // Insertar o actualizar eventos en la tabla ticketflow_scans
                     foreach ($events as $event) {
@@ -532,11 +618,11 @@ class TicketFlow_REST_API {
                             'message' => 'No se encontraron eventos para sincronizar .'
                         ], 404);
                     }
-            
+
                 //**
-                // Aqui estamos trabajando con los asistentes 
+                // Aqui estamos trabajando con los asistentes
                 //  */
-                // Obtener asistentes de la base de datos 
+                // Obtener asistentes de la base de datos
 
 
             // Ahora sincroniza asistentes para todos los eventos
@@ -554,7 +640,7 @@ class TicketFlow_REST_API {
             // Función para traer eventos de la base de datos y que sucede!?
             // esta necesita se llamada desde la funcion que si no encuentra el tramo principal de eventos insertados
             // venga a esta funcion y llame a la funcion de eventos activos, asi luego vemos los que ya insertó los vemos,
-            // los traemos y los usamos para la sincronización de asistentes con los eventos activos. 
+            // los traemos y los usamos para la sincronización de asistentes con los eventos activos.
             //* necesito que los eventos esten asociados a los productores.
             //* y que los eventos activos sean los que tengan fecha de inicio y fin en el futuro
             //---------------------------------------------------------------------------------------------------------------!
@@ -573,7 +659,7 @@ class TicketFlow_REST_API {
 
             public function mep_get_eventos_activos(WP_REST_Request $request) {
                 error_log('Entrando en la función mep_get_eventos_activos');
-                
+
                 global $wpdb;
                 $tabla = $wpdb->prefix . 'ticketflow_scans';
             //
@@ -630,14 +716,14 @@ class TicketFlow_REST_API {
                             INSERT IGNORE INTO {$wpdb->prefix}ticketflow_scans (
                                 qr_code, ticket_id, event_id, scan_status, tipo
                             )
-                            SELECT 
+                            SELECT
                                 a.post_name AS qr_code,
                                 a.ID AS ticket_id,
                                 %d AS event_id,
                                 'pending' AS scan_status,
                                 'asistente' AS tipo
                             FROM {$wpdb->prefix}posts a
-                            LEFT JOIN {$wpdb->prefix}postmeta ea 
+                            LEFT JOIN {$wpdb->prefix}postmeta ea
                                 ON ea.post_id = a.ID AND ea.meta_key = 'ea_event_id'
                             WHERE a.post_type = 'mep_events_attendees'
                             AND a.post_status = 'publish'
@@ -722,7 +808,7 @@ class TicketFlow_REST_API {
             }
 
 
-        
+
                 /**
                  * Función para sincronizar y obtener asistentes de un evento específico.
                  *
@@ -760,27 +846,27 @@ class TicketFlow_REST_API {
 
                 function get_events_from_db(WP_REST_Request $request) {
                     global $wpdb;
-                
+
                     $query = "
-                        SELECT 
-                            p.ID, 
-                            p.post_title, 
+                        SELECT
+                            p.ID,
+                            p.post_title,
                             start_meta.meta_value AS event_start_datetime,
                             end_meta.meta_value AS event_end_datetime
                         FROM {$wpdb->prefix}posts AS p
-                        LEFT JOIN {$wpdb->prefix}postmeta AS start_meta 
+                        LEFT JOIN {$wpdb->prefix}postmeta AS start_meta
                             ON p.ID = start_meta.post_id AND start_meta.meta_key = 'event_start_datetime'
-                        LEFT JOIN {$wpdb->prefix}postmeta AS end_meta 
+                        LEFT JOIN {$wpdb->prefix}postmeta AS end_meta
                             ON p.ID = end_meta.post_id AND end_meta.meta_key = 'event_end_datetime'
                         WHERE p.post_type = 'mep_events'
                         ORDER BY start_meta.meta_value ASC
                     ";
-                
+
                     $events = $wpdb->get_results($query);
-                
+
                     if ($events) {
                         $response = [];
-                
+
                         foreach ($events as $event) {
                             $response[] = [
                                 'id'                => $event->ID,
@@ -789,110 +875,183 @@ class TicketFlow_REST_API {
                                 'end_datetime'      => $event->event_end_datetime,
                             ];
                         }
-                
+
                         return new WP_REST_Response($response, 200);
                     } else {
                         return new WP_REST_Response('No se encontraron eventos.', 404);
                     }
                 }
                         //Ultima mejora para el sistema
-            public function mark_multiple_as_scanned($request) {
-                global $wpdb;
-                $table = $wpdb->prefix . 'ticketflow_scans';
-                $ids = array_map('intval', $request['ids']);
-                
-                if (empty($ids)) {
-                    return new WP_REST_Response([
-                        'success' => false,
-                        'message' => 'No se proporcionaron IDs válidos'
-                    ], 400);
-                }
+    public function mark_multiple_as_scanned($request) {
+        global $wpdb;
 
-                // Iniciar transacción
-                $wpdb->query('START TRANSACTION;');
+        $table = $wpdb->prefix . 'ticketflow_scans';
+        $events_table = $wpdb->prefix . 'ticketflow_scan_events';
 
-                try {
-                    // 1. Bloquear todas las filas primero para evitar deadlocks
-                    $placeholders = implode(',', array_fill(0, count($ids), '%d'));
-                    $query = $wpdb->prepare(
-                        "SELECT id, scan_status, scan_time, user_id 
-                        FROM $table 
-                        WHERE id IN ($placeholders) 
-                        FOR UPDATE",
-                        $ids
-                    );
-                    
-                    $asistentes = $wpdb->get_results($query, ARRAY_A);
-                    
-                    if (count($asistentes) !== count($ids)) {
-                        $wpdb->query('ROLLBACK;');
-                        return new WP_REST_Response([
-                            'success' => false,
-                            'message' => 'Algunos asistentes no fueron encontrados',
-                            'missing_ids' => array_diff($ids, array_column($asistentes, 'id'))
-                        ], 404);
-                    }
+        // Normalizar y eliminar IDs repetidos.
+        $ids = array_values(array_unique(
+            array_filter(array_map('absint', (array) $request['ids']))
+        ));
 
-                    // 2. Clasificar asistentes
-                    $current_time = current_time('mysql');
-                    $to_update = [];
-                    $already_scanned = [];
-                    
-                    foreach ($asistentes as $asistente) {
-                        if ($asistente['scan_status'] === 'pending') {
-                            $to_update[] = $asistente['id'];
-                        } else {
-                            $already_scanned[] = [
-                                'id' => $asistente['id'],
-                                'status' => $asistente['scan_status'],
-                                'scan_time' => $asistente['scan_time']
-                            ];
-                        }
-                    }
+        if (empty($ids)) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'No se proporcionaron IDs válidos'
+            ], 400);
+        }
 
-                    // 3. Actualización masiva optimizada
-                    if (!empty($to_update)) {
-                        $placeholders = implode(',', array_fill(0, count($to_update), '%d'));
-                        $update_query = $wpdb->prepare(
-                            "UPDATE $table 
-                            SET scan_status = 'scanned', 
-                                scan_time = %s 
-                            WHERE id IN ($placeholders)",
-                            array_merge([$current_time], $to_update)
-                        );
-                        
-                        $updated = $wpdb->query($update_query);
-                        
-                        if ($updated === false) {
-                            throw new Exception('Error en actualización masiva');
-                        }
-                    }
+        // Iniciar transacción.
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'No se pudo iniciar la transacción'
+            ], 500);
+        }
 
-                    // 4. Confirmar transacción
-                    $wpdb->query('COMMIT;');
+        try {
+            // 1. Bloquear y recuperar los tickets solicitados.
+            $placeholders = implode(',', array_fill(0, count($ids), '%d'));
 
-                    // 5. Preparar respuesta
-                    $response = [
-                        'success' => true,
-                        'updated_count' => count($to_update),
-                        'already_scanned' => $already_scanned,
-                        'scan_time' => $current_time
+            $query = $wpdb->prepare(
+                "SELECT id, ticket_id, event_id, scan_status, scan_time, user_id
+                FROM $table
+                WHERE id IN ($placeholders)
+                FOR UPDATE",
+                $ids
+            );
+
+            $asistentes = $wpdb->get_results($query, ARRAY_A);
+
+            if (!is_array($asistentes)) {
+        $asistentes = [];
+        }
+            if (count($asistentes) !== count($ids)) {
+                $found_ids = array_map(
+                    'intval',
+                    array_column($asistentes, 'id')
+                );
+
+                $missing_ids = array_values(array_diff($ids, $found_ids));
+
+                $wpdb->query('ROLLBACK');
+
+                return new WP_REST_Response([
+                    'success' => false,
+                    'message' => 'Algunos asistentes no fueron encontrados',
+                    'missing_ids' => $missing_ids
+                ], 404);
+            }
+
+            // 2. Clasificar tickets.
+            $current_time = current_time('mysql');
+            $server_received_at = current_time('mysql', true);
+
+            $to_update = [];
+            $already_scanned = [];
+
+            foreach ($asistentes as $asistente) {
+                if ($asistente['scan_status'] === 'pending') {
+                    $to_update[] = $asistente;
+                } else {
+                    $already_scanned[] = [
+                        'id' => $asistente['id'],
+                        'status' => $asistente['scan_status'],
+                        'scan_time' => $asistente['scan_time']
                     ];
-
-                    // 6. Opcional: Registrar en logs
-                    if (!empty($already_scanned)) {
-                        $response['warning'] = 'Algunos tickets ya estaban escaneados';
-                    }
-
-                    return new WP_REST_Response($response, 200);
-
-                } catch (Exception $e) {
-                    $wpdb->query('ROLLBACK;');
-                    return new WP_REST_Response([
-                        'success' => false,
-                        'message' => 'Error en la transacción: ' . $e->getMessage()
-                    ], 500);
                 }
             }
 
+            foreach ($to_update as $asistente) {
+                if (
+                    (int) $asistente['ticket_id'] <= 0 ||
+                    (int) $asistente['event_id'] <= 0
+                ) {
+                    throw new Exception(
+                        'Ticket sin identificador de asistente o evento válido'
+                    );
+                }
+            }
+            // 3. Actualizar tickets pendientes.
+            if (!empty($to_update)) {
+                $update_ids = array_column($to_update, 'id');
+
+                $placeholders = implode(
+                    ',',
+                    array_fill(0, count($update_ids), '%d')
+                );
+
+                $update_query = $wpdb->prepare(
+                    "UPDATE $table
+                    SET scan_status = 'scanned',
+                        scan_time = %s
+                    WHERE id IN ($placeholders)",
+                    array_merge([$current_time], $update_ids)
+                );
+
+                $updated = $wpdb->query($update_query);
+
+                if ($updated === false || $updated !== count($to_update)) {
+                    throw new Exception('Error en la actualización de tickets');
+                }
+
+                // 4. Registrar cada transición en la tabla de eventos.
+                foreach ($to_update as $asistente) {
+                    $inserted = $wpdb->insert(
+                        $events_table,
+                        [
+                            'scan_uuid' => wp_generate_uuid4(),
+                            'attendee_id' => (int) $asistente['ticket_id'],
+                            'event_id' => (int) $asistente['event_id'],
+                            'device_id' => null,
+                            'scanned_at' => null,
+                            'server_received_at' => $server_received_at,
+                            'outcome' => 'accepted'
+                        ],
+                        [
+                            '%s',
+                            '%d',
+                            '%d',
+                            '%s',
+                            '%s',
+                            '%s',
+                            '%s'
+                        ]
+                    );
+
+                    if ($inserted === false) {
+                        throw new Exception(
+                            'Error al registrar el evento de escaneo'
+                        );
+                    }
+                }
+            }
+
+            // 5. Confirmar ambas operaciones.
+            if ($wpdb->query('COMMIT') === false) {
+                throw new Exception('Error al confirmar la transacción');
+            }
+
+            // 6. Mantener la respuesta compatible.
+            $response = [
+                'success' => true,
+                'updated_count' => count($to_update),
+                'already_scanned' => $already_scanned,
+                'scan_time' => $current_time
+            ];
+
+            if (!empty($already_scanned)) {
+                $response['warning'] = 'Algunos tickets ya estaban escaneados';
+            }
+
+            return new WP_REST_Response($response, 200);
+
+        } catch (Throwable $e) {
+            $wpdb->query('ROLLBACK');
+
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Error en la transacción: ' . $e->getMessage()
+            ], 500);
+        }
     }
+}

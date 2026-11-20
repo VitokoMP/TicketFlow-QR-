@@ -47,11 +47,12 @@ class TicketFlow_Core {
     }
 
     private function register_hooks() {
+
         add_action('init', [$this, 'diagnostic_check']);
         add_action('admin_menu', [$this, 'add_sync_menu_page']);
         add_action('admin_init', [$this, 'handle_sync_request']);
         add_action('init', [$this, 'check_security_headers']);
-
+        add_action('init', [$this, 'maybe_upgrade_scan_events_table'], 5);
     }
 
     public function add_sync_menu_page() {
@@ -221,4 +222,141 @@ class TicketFlow_Core {
             header('X-XSS-Protection: 1; mode=block');
         }
     }
+    public function maybe_upgrade_scan_events_table() {
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'ticketflow_scan_events';
+    $schema_version = '1';
+
+    $stored_version = get_option('ticketflow_scan_events_db_version', '');
+
+    $table_exists = $wpdb->get_var(
+        $wpdb->prepare(
+            'SHOW TABLES LIKE %s',
+            $wpdb->esc_like($table_name)
+        )
+    ) === $table_name;
+
+    // No ejecutar nuevamente una migración ya verificada.
+    if ($table_exists && $stored_version === $schema_version) {
+        return;
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE $table_name (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        scan_uuid CHAR(36) NOT NULL,
+        attendee_id BIGINT(20) UNSIGNED NOT NULL,
+        event_id BIGINT(20) UNSIGNED NOT NULL,
+        device_id VARCHAR(100) DEFAULT NULL,
+        scanned_at DATETIME(3) DEFAULT NULL,
+        server_received_at DATETIME(3) NOT NULL,
+        outcome VARCHAR(32) NOT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY uq_scan_uuid (scan_uuid),
+        KEY idx_attendee_outcome (attendee_id, outcome),
+        KEY idx_event_received (event_id, server_received_at, id)
+    ) ENGINE=InnoDB $charset_collate;";
+
+    dbDelta($sql);
+
+    // Verificar que la tabla exista.
+    $table_exists = $wpdb->get_var(
+        $wpdb->prepare(
+            'SHOW TABLES LIKE %s',
+            $wpdb->esc_like($table_name)
+        )
+    ) === $table_name;
+
+    if (!$table_exists) {
+        error_log(
+            '[TicketFlow] Error: no se pudo crear ticketflow_scan_events.'
+        );
+        return;
+    }
+
+    // Verificar columnas.
+    $columns = $wpdb->get_col(
+        "SHOW COLUMNS FROM $table_name",
+        0
+    );
+
+    $required_columns = [
+        'id',
+        'scan_uuid',
+        'attendee_id',
+        'event_id',
+        'device_id',
+        'scanned_at',
+        'server_received_at',
+        'outcome'
+    ];
+
+    if (!empty(array_diff($required_columns, $columns))) {
+        error_log(
+            '[TicketFlow] Error: faltan columnas en ticketflow_scan_events.'
+        );
+        return;
+    }
+
+    // Verificar índices.
+    $indexes = $wpdb->get_col(
+        "SHOW INDEX FROM $table_name",
+        2
+    );
+
+    $required_indexes = [
+        'PRIMARY',
+        'uq_scan_uuid',
+        'idx_attendee_outcome',
+        'idx_event_received'
+    ];
+
+    if (!empty(array_diff($required_indexes, $indexes))) {
+        error_log(
+            '[TicketFlow] Error: faltan índices en ticketflow_scan_events.'
+        );
+        return;
+    }
+
+    // Verificar precisión temporal y motor transaccional.
+    $scanned_at = $wpdb->get_row(
+        "SHOW COLUMNS FROM $table_name LIKE 'scanned_at'",
+        ARRAY_A
+    );
+
+    $received_at = $wpdb->get_row(
+        "SHOW COLUMNS FROM $table_name LIKE 'server_received_at'",
+        ARRAY_A
+    );
+
+    $table_status = $wpdb->get_row(
+        $wpdb->prepare(
+            'SHOW TABLE STATUS WHERE Name = %s',
+            $table_name
+        ),
+        ARRAY_A
+    );
+
+    if (
+        strtolower($scanned_at['Type'] ?? '') !== 'datetime(3)' ||
+        strtolower($received_at['Type'] ?? '') !== 'datetime(3)' ||
+        strtoupper($table_status['Engine'] ?? '') !== 'INNODB'
+    ) {
+        error_log(
+            '[TicketFlow] Error: esquema temporal o motor de tabla incorrecto.'
+        );
+        return;
+    }
+
+    // Registrar versión únicamente después de verificar el esquema.
+    update_option(
+        'ticketflow_scan_events_db_version',
+        $schema_version,
+        false
+    );
+}
 }
